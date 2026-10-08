@@ -1,4 +1,5 @@
 export interface CourseItem { name: string; done: boolean; done_date?: string | null }
+export interface TaskSchedule { mode: "daily" | "weekdays" | "weekly"; weekdays: number[]; weekly_target: number | null }
 export interface Task {
   id: string; name: string; description: string; target: number; progress: number;
   is_done: boolean; done_at: string | null; priority: "high" | "medium" | "low";
@@ -6,6 +7,7 @@ export interface Task {
   daily_done: boolean; daily_date: string | null; daily_plan: number[] | null;
   plan_start_date: string | null; course_items: CourseItem[] | null;
   owner_id: string; created_at: string; updated_at: string;
+  schedule: TaskSchedule; is_scheduled_today: boolean; weekly_completed: number; weekly_target: number | null;
   unit: string; today_amount: number; record_count: number; plan_expired: boolean;
 }
 export interface ProgressRecord {
@@ -35,4 +37,4 @@ export interface MutationResponse {
   record?: ProgressRecord | null;
 }
 export interface HistoryEntry { task_id: string; task_name: string; date: string; completed: boolean; amount: number; unit: string; task_kind: "normal" | "daily" | "plan" | "course"; quota: number | null }
-export interface HistoryResponse { history: HistoryEntry[]; streak: number }
+export interface HistoryResponse { history: HistoryEntry[]; streak: number; rest_dates: string[] }

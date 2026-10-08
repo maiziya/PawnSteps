@@ -43,6 +43,7 @@ export function Dashboard() {
   const [editing, setEditing] = useState<Task | null>(null);
   const [help, setHelp] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [showRest, setShowRest] = useState(false);
   const [dateLabel, setDateLabel] = useState("");
   const [courseId, setCourseId] = useState<string | null>(null);
   const [recordTaskId, setRecordTaskId] = useState<string | null>(null);
@@ -80,6 +81,8 @@ export function Dashboard() {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
 
+  useEffect(() => { if (query.trim()) setShowRest(true); }, [query]);
+
   const hasTasks = tasks.length > 0;
   const visible = tasks.filter(task => task.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || (filter === "daily" && (task.daily_quota > 0 || task.daily_minimum > 0 || task.daily_plan !== null)) || (filter === "course" && task.course_items !== null) || (filter === "done" && task.is_done)));
   const quickHolds = new Set(tasks.filter(task => {
@@ -88,7 +91,10 @@ export function Dashboard() {
   }).map(task => task.id));
   const quickFeedbackVisible = Object.values(quickFeedback).some(feedback => feedback.phase !== "failed");
   const optimisticPositions = new Map((pendingOrder || []).map((id, index) => [id, index]));
-  const active = visible.filter(task => !task.is_done || quickHolds.has(task.id)).sort((a, b) => (optimisticPositions.get(a.id) ?? a.position) - (optimisticPositions.get(b.id) ?? b.position) || a.created_at.localeCompare(b.created_at));
+  const isRest = (task: Task) => !task.is_done && task.schedule.mode !== 'daily' && !task.is_scheduled_today && !task.daily_done && task.today_amount === 0;
+  const resting = visible.filter(isRest).sort((a, b) => (optimisticPositions.get(a.id) ?? a.position) - (optimisticPositions.get(b.id) ?? b.position) || a.created_at.localeCompare(b.created_at));
+  const restExpanded = showRest;
+  const active = visible.filter(task => (!task.is_done || quickHolds.has(task.id)) && !isRest(task)).sort((a, b) => (optimisticPositions.get(a.id) ?? a.position) - (optimisticPositions.get(b.id) ?? b.position) || a.created_at.localeCompare(b.created_at));
   const done = visible.filter(task => task.is_done && !quickHolds.has(task.id));
   const completedExpanded = showCompleted || filter === "done";
   const nextMilestone = rewards.filter(reward => reward.streak_target !== null && reward.streak_target > stats.streak).sort((a, b) => a.streak_target! - b.streak_target!)[0];
@@ -205,6 +211,10 @@ export function Dashboard() {
                 <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
                   <div className="task-list"><AnimatePresence initial={false}>{active.map(task => <motion.div key={task.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TaskCard task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} /></motion.div>)}</AnimatePresence></div>
                 </SortableContext>
+                {resting.length > 0 && <section className="completed-section">
+                  <button className="completed-toggle" aria-label="今日休息的任务" aria-expanded={restExpanded} aria-controls="resting-task-list" onClick={() => setShowRest(value => !value)}><ChevronDown size={17} className={restExpanded ? '' : 'collapsed'} /><Moon size={16} /><span>今日休息</span><span className="completed-count">{resting.length}</span><span className="completed-hint">{restExpanded ? '收起' : '展开查看'}</span></button>
+                  {restExpanded && <SortableContext items={resting.map(task => task.id)} strategy={verticalListSortingStrategy}><div id="resting-task-list" role="region" aria-label="今日休息任务列表" className="task-list">{resting.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} />)}</div></SortableContext>}
+                </section>}
                 {done.length > 0 && <section className="completed-section">
                   <button ref={completedToggle} className="completed-toggle" aria-label="已完成任务" aria-expanded={completedExpanded} aria-controls="completed-task-list" onClick={() => { if (filter === "done") { setFilter("all"); setShowCompleted(false); } else setShowCompleted(value => !value); }}><ChevronDown size={17} className={completedExpanded ? "" : "collapsed"} /><Check size={16} /><span>已完成任务</span><span className="completed-count" aria-hidden="true">{done.length}</span><span className="completed-hint" aria-hidden="true">{completedExpanded ? "收起" : "展开查看"}</span></button>
                   {completedExpanded && <div id="completed-task-list" role="region" aria-label="已完成任务列表" className="task-list">{done.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} />)}</div>}

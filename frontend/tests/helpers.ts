@@ -27,6 +27,7 @@ export async function createTask(page: Page, name: string, options: { kind?: 'no
   if (options.kind === 'daily') await dialog.getByRole('button', { name: /^每日打卡/ }).click();
   if (options.kind === 'plan') await dialog.getByRole('button', { name: /^天数计划/ }).click();
   await dialog.getByLabel('任务名称', { exact: true }).fill(name);
+  if (options.description || options.reward) await dialog.locator('.task-course-options > summary').click();
   if (options.description) await dialog.locator('#task-description').fill(options.description);
   if (options.target) await dialog.locator('#task-target').fill(String(options.target));
   if (options.unit) await dialog.getByLabel('计量单位', { exact: true }).selectOption({ label: options.unit });

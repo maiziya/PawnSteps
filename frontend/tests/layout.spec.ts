@@ -68,6 +68,7 @@ test('long task content remains readable on demand without widening desktop or p
   await expect(editor).toBeVisible();
   await expect(page.getByRole('menu')).toBeHidden();
   const updatedDescription = '把今天的收获，留给明天的自己。';
+  await editor.locator('.task-course-options > summary').click();
   await editor.locator('#task-description').fill(updatedDescription);
   await editor.getByRole('button', { name: '保存调整', exact: true }).click();
   await expect(editor).toBeHidden();

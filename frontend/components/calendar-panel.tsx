@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Check, Circle, ChevronLeft, ChevronRight, Flame, List, RefreshCw } from "lucide-react";
+import { CalendarDays, Check, Circle, ChevronLeft, ChevronRight, Flame, List, Moon, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import type { HistoryEntry, HistoryResponse } from "@/lib/types";
@@ -39,6 +39,8 @@ export function CalendarPanel() {
   const [selectedDay, setSelectedDay] = useState(currentDay);
   const [view, setView] = useState<"calendar" | "list">("calendar");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [restDates, setRestDates] = useState<string[]>([]);
+  const restDays = useMemo(() => new Set(restDates), [restDates]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
@@ -59,8 +61,8 @@ export function CalendarPanel() {
     const controller = new AbortController();
     setLoading(true); setError("");
     api<HistoryResponse>(`/history?month=${monthKey}`, { signal: controller.signal })
-      .then(data => { if (!controller.signal.aborted) setHistory(data.history); })
-      .catch(reason => { if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : "打卡记录暂时无法加载"); setHistory([]); } })
+      .then(data => { if (!controller.signal.aborted) { setHistory(data.history); setRestDates(data.rest_dates || []); } })
+      .catch(reason => { if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : "打卡记录暂时无法加载"); setHistory([]); setRestDates([]); } })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [monthKey, tasks, retry]);
@@ -106,12 +108,12 @@ export function CalendarPanel() {
         <table className="calendar-table"><caption className="sr-only">{month.getFullYear()} 年 {month.getMonth() + 1} 月打卡记录</caption><thead><tr>{weekDays.map(day => <th scope="col" key={day}>周{day}</th>)}</tr></thead><tbody>
           {Array.from({ length: days.length / 7 }, (_, week) => <tr key={week}>{days.slice(week * 7, week * 7 + 7).map(day => {
             const key = dateKey(day); const entries = byDay[key] || []; const outside = day.getMonth() !== month.getMonth(); const status = dayStatus(entries);
-            return <td key={key}><button type="button" className={`calendar-day ${outside ? "outside-month" : ""} ${key === currentDay ? "is-today" : ""} ${key === selectedDay ? "is-selected" : ""} ${entries.length ? `has-records activity-${status}` : ""}`} aria-label={`${dateLabel(key)}，${entries.length ? `${entries.length} 项任务有进度，${statusLabels[status]}` : "暂无任务进度"}`} aria-pressed={key === selectedDay} aria-current={key === currentDay ? "date" : undefined} onClick={() => chooseDay(day)}><span className="calendar-day-number">{day.getDate()}</span><span className="calendar-day-dots" aria-hidden="true">{entries.length > 0 && <i />}</span></button></td>;
+            return <td key={key}><button type="button" className={`calendar-day ${outside ? "outside-month" : ""} ${key === currentDay ? "is-today" : ""} ${key === selectedDay ? "is-selected" : ""} ${entries.length ? `has-records activity-${status}` : restDays.has(key) ? "is-rest" : ""}`} aria-label={`${dateLabel(key)}，${entries.length ? `${entries.length} 项任务有进度，${statusLabels[status]}` : restDays.has(key) ? "休息日" : "暂无任务进度"}`} aria-pressed={key === selectedDay} aria-current={key === currentDay ? "date" : undefined} onClick={() => chooseDay(day)}><span className="calendar-day-number">{day.getDate()}</span><span className="calendar-day-dots" aria-hidden="true">{entries.length > 0 ? <i /> : restDays.has(key) ? <Moon size={11} /> : null}</span></button></td>;
           })}</tr>)}
         </tbody></table>
-        <div className="calendar-legend"><span><i className="activity-partial" />有进度</span><span><i />已达标</span><span><i className="activity-exceeded" />超额完成</span><span>无圆点：未做</span></div>
+        <div className="calendar-legend"><span><i className="activity-partial" />有进度</span><span><i />已达标</span><span><i className="activity-exceeded" />超额完成</span><span>无圆点：未记录</span></div>
       </div>
-      <aside className="calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3></div>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : selectedEntries.length ? <ul className="calendar-completed-list">{selectedEntries.map(entry => <li key={entry.task_id}><span className={`calendar-complete-check activity-${activityStatus(entry)}`}>{['met', 'exceeded'].includes(activityStatus(entry)) ? <Check size={15} /> : <Circle size={9} fill="currentColor" />}</span><div><strong>{entry.task_name}</strong><span className={`calendar-activity-label activity-${activityStatus(entry)}`}>{activityLabel(entry)}</span></div></li>)}</ul> : <div className="calendar-detail-empty"><CalendarDays size={24} strokeWidth={1.2} /><p>这一天还没有任务进度</p></div>}</aside>
+      <aside className="calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3></div>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : selectedEntries.length ? <ul className="calendar-completed-list">{selectedEntries.map(entry => <li key={entry.task_id}><span className={`calendar-complete-check activity-${activityStatus(entry)}`}>{['met', 'exceeded'].includes(activityStatus(entry)) ? <Check size={15} /> : <Circle size={9} fill="currentColor" />}</span><div><strong>{entry.task_name}</strong><span className={`calendar-activity-label activity-${activityStatus(entry)}`}>{activityLabel(entry)}</span></div></li>)}</ul> : <div className="calendar-detail-empty"><CalendarDays size={24} strokeWidth={1.2} /><p>{restDays.has(selectedDay) ? "这一天是休息日，不计漏打卡" : "这一天还没有任务进度"}</p></div>}</aside>
     </div> : <div className="calendar-list-panel panel" aria-busy={loading}>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : recordedDays.length ? recordedDays.map(day => <section className="calendar-list-day" key={day}><button type="button" className="calendar-list-date" onClick={() => { setSelectedDay(day); setView("calendar"); }}><strong>{new Date(`${day}T12:00:00`).getDate()}</strong><span>{new Date(`${day}T12:00:00`).toLocaleDateString("zh-CN", { weekday: "long" })}</span><small>{byDay[day].length} 项任务</small></button><ul className="calendar-completed-list">{byDay[day].map(entry => <li key={entry.task_id}><span className={`calendar-complete-check activity-${activityStatus(entry)}`}>{['met', 'exceeded'].includes(activityStatus(entry)) ? <Check size={15} /> : <Circle size={9} fill="currentColor" />}</span><div><strong>{entry.task_name}</strong><span className={`calendar-activity-label activity-${activityStatus(entry)}`}>{activityLabel(entry)}</span></div></li>)}</ul></section>) : <div className="calendar-detail-empty"><CalendarDays size={38} strokeWidth={1.2} /><h3>这个月的故事，等你来写</h3><p className="muted">记录一次任务进度，就会出现在这里。</p></div>}</div>}
   </section>;
 }

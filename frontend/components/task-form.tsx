@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { parseCourseDirectory, parseCourseText } from '@/lib/course';
 import { useAppStore } from '@/lib/store';
-import type { CourseItem, Task } from '@/lib/types';
+import { everydaySchedule, ScheduleOptions, ScheduleSelect } from '@/components/schedule-fields';
+import type { CourseItem, Task, TaskSchedule } from '@/lib/types';
 import './task-form.css';
 
 const formSchema = z.object({
@@ -65,6 +66,7 @@ function defaultValues(task?: Task | null, kind: TaskKind = 'normal'): FormValue
 export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: { open: boolean; onOpenChange: (open: boolean) => void; task?: Task | null; initialKind?: TaskKind }) {
   const [kind, setKind] = useState<TaskKind>('normal');
   const [courseDaily, setCourseDaily] = useState(true);
+  const [schedule, setSchedule] = useState<TaskSchedule>(everydaySchedule);
   const [courseItems, setCourseItems] = useState<CourseItem[]>([]);
   const [importName, setImportName] = useState('');
   const [importError, setImportError] = useState('');
@@ -89,6 +91,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
     reset(defaultValues(task, nextKind));
     setKind(nextKind);
     setCourseDaily(!task || task.daily_minimum > 0 || task.daily_goal !== null);
+    setSchedule(task?.schedule || everydaySchedule());
     setCourseItems(task?.course_items || []);
     setImportName('');
     setImportError('');
@@ -138,7 +141,10 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
       if (courseDaily && Number(values.dailyQuota) > courseCount) { setError('dailyQuota', { message: '最小完成量不能超过课程节数' }); return; }
       if (courseDaily && Number(values.dailyGoal) > courseCount) { setError('dailyGoal', { message: '每日目标量不能超过课程节数' }); return; }
     }
+    const appliedSchedule = kind === 'plan' || (kind === 'course' && !courseDaily) ? everydaySchedule() : schedule;
+    if (appliedSchedule.mode === 'weekdays' && !appliedSchedule.weekdays.length) { setError('root.schedule', { message: '至少选择一天' }); return; }
     const payload: Record<string, unknown> = {
+      schedule: appliedSchedule,
       name: values.name,
       description: values.description,
       priority: values.priority,
@@ -180,6 +186,18 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   const pending = Boolean(busy) || isSubmitting || importing;
   const directoryAttributes = { webkitdirectory: '', directory: '' } as InputHTMLAttributes<HTMLInputElement>;
 
+  function toggleCourseDaily(enabled: boolean) {
+    setCourseDaily(enabled);
+    if (enabled) return;
+    clearErrors(['dailyQuota', 'dailyGoal']);
+    clearErrors('root.schedule');
+    for (const field of ['dailyQuota', 'dailyGoal'] as const) {
+      const value = getValues(field);
+      if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 10000) setValue(field, '1');
+    }
+  }
+
+  const updateSchedule = (value: TaskSchedule) => { setSchedule(value); clearErrors('root.schedule'); };
   const additionalFields = <>
           <div className="task-settings-grid">
             <div className="space-y-1.5"><label htmlFor="task-priority" className="text-sm font-medium">优先级</label><select id="task-priority" className="field w-full" {...register('priority')}><option value="high">高 · 优先投入</option><option value="medium">中 · 稳步推进</option><option value="low">低 · 从容安排</option></select></div>
@@ -221,28 +239,28 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
             {kind === 'plan' && !task && <div className="space-y-1.5"><label htmlFor="task-plan-start" className="text-sm font-medium">开始日期</label><Input id="task-plan-start" type="date" {...register('planStartDate')} />{errors.planStartDate && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.planStartDate.message}</p>}</div>}
           </div>}
 
+          {(kind === 'normal' || kind === 'daily') && <div className="task-schedule-fields"><ScheduleSelect value={schedule} onChange={updateSchedule} /><ScheduleOptions value={schedule} onChange={updateSchedule} />{errors.root?.schedule && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.root.schedule.message}</p>}</div>}
+
           {kind === 'plan' && (task ? <div className="rounded-xl bg-[var(--background)] p-4 text-sm text-[var(--muted)]"><CalendarDays size={16} className="mb-2" />从 {task.plan_start_date} 开始，共 {task.daily_plan?.length} 天，目标任务总量 {task.target} {task.unit}。</div> : <div>
             <div className="space-y-1.5"><label htmlFor="task-plan" className="text-sm font-medium">每天的配额</label><textarea id="task-plan" rows={1} className="field task-plan-input font-mono text-sm" {...register('plan')} /><p className="text-xs leading-relaxed text-[var(--muted)]">逗号分隔每日配额，0 或 -1 表示休息。</p>{errors.plan && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.plan.message}</p>}</div>
           </div>)}
 
           {kind === 'course' && (task ? <p className="rounded-xl bg-[var(--background)] p-4 text-sm text-[var(--muted)]">已导入 {courseCount} 节课程，完成 {task.progress} 节。打开课程后勾选学习进度。</p> : <div className="task-course-import">
-            <p className="text-xs leading-relaxed text-[var(--muted)]">TXT / MD：用 ### 分组，- 或 * 列出课程。</p>
             <input ref={fileInput} type="file" accept=".txt,.md,text/plain,text/markdown" className="hidden" onChange={event => { void importText(event.target.files?.[0]); event.target.value = ''; }} />
             <input ref={directoryInput} type="file" multiple {...directoryAttributes} className="hidden" onChange={event => { importDirectory(event.target.files); event.target.value = ''; }} />
-            <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={() => fileInput.current?.click()} disabled={pending}><FileText size={15} />选择 TXT / MD</Button><Button type="button" variant="outline" size="sm" onClick={() => directoryInput.current?.click()} disabled={pending}><FolderOpen size={15} />选择文件夹</Button></div>
+            <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" title="TXT / MD：用 ### 分组，- 或 * 列出课程" onClick={() => fileInput.current?.click()} disabled={pending}><FileText size={15} />选择 TXT / MD</Button><Button type="button" variant="outline" size="sm" title="仅读取文件名，不上传文件内容" onClick={() => directoryInput.current?.click()} disabled={pending}><FolderOpen size={15} />选择文件夹</Button></div>
             {courseCount > 0 && <div className="flex items-center gap-2 text-sm text-[var(--success)]"><Check size={16} /><span className="min-w-0 break-words">{importName} · {courseCount} 节课程</span></div>}
             {importError && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{importError}</p>}
-            <p className="text-xs text-[var(--muted)]">文件夹仅读取文件名，不上传文件内容。</p>
           </div>)}
 
           {kind === 'course' && <div className="task-course-daily">
-            <label className="task-course-daily-toggle"><input type="checkbox" checked={courseDaily} onChange={event => { const enabled = event.target.checked; setCourseDaily(enabled); if (!enabled) { clearErrors(['dailyQuota', 'dailyGoal']); for (const field of ['dailyQuota', 'dailyGoal'] as const) { const value = getValues(field); if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 10000) setValue(field, '1'); } } }} />每日学习计划</label>
+            <div className="task-course-plan-heading"><label className="task-course-daily-toggle"><input type="checkbox" checked={courseDaily} onChange={event => toggleCourseDaily(event.target.checked)} />每日学习计划</label>{courseDaily && <ScheduleSelect compact value={schedule} onChange={updateSchedule} />}</div>{courseDaily && <ScheduleOptions value={schedule} onChange={updateSchedule} />}{errors.root?.schedule && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.root.schedule.message}</p>}
             {courseDaily && <div className="task-settings-grid">
               <div className="space-y-1.5"><label htmlFor="course-minimum">最小完成量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-minimum" aria-label="最小完成量" type="number" min={1} max={courseCount || 10000} {...register('dailyQuota')} />{errors.dailyQuota && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyQuota.message}</p>}</div>
               <div className="space-y-1.5"><label htmlFor="course-goal">每日目标量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-goal" aria-label="每日目标量" type="number" min={1} max={courseCount || 10000} {...register('dailyGoal')} />{errors.dailyGoal && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyGoal.message}</p>}</div>
             </div>}
           </div>}
-          {kind === 'course' ? <details className="task-course-options"><summary>优先级、奖励与备注<ChevronDown size={16} /></summary><div className="task-form-fields">{additionalFields}</div></details> : additionalFields}
+          <details className="task-course-options"><summary>优先级、奖励与备注<ChevronDown size={16} /></summary><div className="task-form-fields">{additionalFields}</div></details>
           <div className="task-form-footer"><Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>取消</Button><Button type="submit" disabled={pending}>{pending && <LoaderCircle size={16} className="animate-spin" />}{task ? '保存调整' : '创建任务'}</Button></div>
         </form>
       </DialogContent>

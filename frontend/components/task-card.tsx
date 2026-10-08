@@ -8,6 +8,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowRight, BookOpen, CalendarDays, Check, FileText, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Trash2 } from 'lucide-react';
 import type { Task } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
+import { scheduleLabel } from './schedule-fields';
 import './task-card.css';
 
 interface TaskCardProps {
@@ -51,6 +52,10 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords }: TaskCard
   const minimumLabel = restDay ? '今日休息' : inactivePlan ? (task.plan_expired ? '计划已结束' : `${task.plan_start_date} 开始`) : dailyMinimum > 0 ? `最小完成 ${dailyMinimum} ${task.unit}` : '最小完成 未设置';
   const meterLabel = `${useDailyMeter ? todayAmount : meterCurrent} / ${meterMaximum} ${isDaily && !isPlan && !useDailyMeter ? '天' : task.unit}`;
   const meterCaption = useDailyMeter ? '今日进度' : '总进度';
+  const frequencyLabel = scheduleLabel(task.schedule);
+  const activitySummary = task.is_done && todayAmount === 0 ? '已完成' : task.schedule.mode === 'weekly' ? `本周 ${task.weekly_completed} / ${task.weekly_target} 天`
+    : !task.is_scheduled_today && !task.daily_done && todayAmount === 0 && task.schedule.mode === 'weekdays' ? '今日休息'
+    : restDay || inactivePlan ? minimumLabel : `今日 ${todayAmount}${dailyGoal > 0 ? ` / ${dailyGoal}` : ''} ${task.unit}`;
 
   async function remove() {
     try { await mutate(`/tasks/${task.id}`, undefined, 'DELETE'); } catch { /* Store displays the error. */ }
@@ -77,7 +82,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords }: TaskCard
               {reward && <span className="compact-task-reward" title={`关联奖励：${reward.name}`} aria-label={`关联奖励：${reward.name}`}><Gift size={14} aria-hidden="true" /></span>}
             </div>
             {(!isCourse || dailyGoal > 0) && <div className="compact-task-meta">
-              <span className={task.daily_done || task.is_done ? 'is-complete' : undefined} aria-label={`${task.name}已完成量`} title={`${dailyGoal > 0 ? `每日目标 ${dailyGoal} ${task.unit}，` : ''}${minimumLabel}`}>{restDay || inactivePlan ? minimumLabel : `今日 ${todayAmount}${dailyGoal > 0 ? ` / ${dailyGoal}` : ''} ${task.unit}`}</span>
+              <span className={task.daily_done || task.is_done ? 'is-complete' : undefined} aria-label={`${task.name}已完成量`} title={`${dailyGoal > 0 ? `每日目标 ${dailyGoal} ${task.unit}，` : ''}${minimumLabel}`}>{activitySummary}</span>
             </div>}
           </div>
           <div className="compact-task-actions">
@@ -132,7 +137,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords }: TaskCard
             <div><dt>任务总量</dt><dd>{task.target} {totalUnit}</dd></div>
             <div><dt>累计完成</dt><dd>{task.progress} {totalUnit}</dd></div>
             {(!isCourse || dailyGoal > 0) && <><div><dt>每日目标量</dt><dd>{dailyGoal > 0 ? `${dailyGoal} ${task.unit}` : '未设置'}</dd></div><div><dt>最小完成量</dt><dd>{dailyMinimum > 0 ? `${dailyMinimum} ${task.unit}` : restDay ? '休息日' : '未设置'}</dd></div></>}
-            <div><dt>优先级</dt><dd>{priority}</dd></div>
+            <div><dt>执行周期</dt><dd>{frequencyLabel}</dd></div><div><dt>今日完成</dt><dd>{todayAmount} {isCourse ? '节' : task.unit}</dd></div><div><dt>优先级</dt><dd>{priority}</dd></div>
           </dl>
           {task.description && <p>{task.description}</p>}{reward && <p className="compact-task-reward-detail"><Gift size={15} aria-hidden="true" /><span>关联奖励：{reward.name}</span></p>}
           <button type="button" onClick={() => setDescriptionOpen(false)}>{`收起${detailsLabel}`}</button>

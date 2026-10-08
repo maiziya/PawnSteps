@@ -91,6 +91,7 @@
 .calendar-day.activity-exceeded .calendar-day-dots i, .calendar-legend i.activity-exceeded { outline: 1px solid currentColor; outline-offset: 2px; }
 .calendar-day.is-today { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 .calendar-day.is-today .calendar-day-number { font-weight: 700; }
+.calendar-day.is-rest .calendar-day-dots { color: var(--muted); }
 .calendar-day.is-selected { color: var(--canvas); background: var(--accent); }
 .calendar-day-dots { display: flex; gap: 3px; align-items: center; justify-content: center; height: 13px; color: var(--success); }
 .calendar-day-dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }

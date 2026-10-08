@@ -142,3 +142,10 @@
 - Validated dated achievement, idempotent lesson checking, cross-day reset, historical unchecks, threshold changes, owner isolation, disabling plans, and legacy undated progress: 73 SQLite integration tests passed; 4 PostgreSQL-only tests skipped.
 - Chromium: 3 new course-plan checks and 21 existing calendar, progress and course-interaction checks passed. WebKit: all 15 course-plan/selection checks passed. The 375 × 667 default course creation form fits without internal scrolling.
 - Opening a long course scrolls to its first incomplete lesson. Explicit next-lesson navigation expands the matching group and supports keyboard focus. Checking and marquee selection never trigger automatic navigation; the selection toolbar keeps a stable height when a course completes.
+
+## Flexible schedules and rest days
+
+- Added dated schedule/enabled versions for everyday, selected-weekday and weekly-count rules. Weekly counts use unique achievement days; rest days preserve continuity without generating work records. Missing weekly targets break continuity at Sunday's deadline; first partial weeks are capped to the remaining dates.
+- Database checks: 81 SQLite tests passed (4 PostgreSQL-only tests skipped); all 85 tests passed on disposable PostgreSQL 17. Fresh PostgreSQL migrations and schema comparison passed. Local SQLite was backed up before upgrading and its Alembic schema comparison also passed. The disposable PostgreSQL container was removed after verification.
+- Browser checks: 17 existing course-plan/layout/progress/drag/mobile tests and 4 schedule tests passed in Chromium; 19 course/schedule tests passed in WebKit. Initial concurrent report-directory collisions were rerun serially. Added search/collapse coverage and pending-save sorting for rest tasks.
+- Schedule controls fit the 375 × 667 viewport for ordinary, daily and course tasks. Optional priority/reward/description fields are collapsed. Calendar rest dates are marked separately from actual activity; users may expand rest tasks and record extra progress.

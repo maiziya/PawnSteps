@@ -28,7 +28,7 @@
 @media (max-height: 740px) {
   .task-form-dialog.dialog-content { padding-top: 18px; padding-bottom: 18px; }
   .task-form-dialog .dialog-header { margin-bottom: 12px; }
-  .task-form-fields { gap: 10px; }
+  .task-form-fields { gap: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .task-kind-option { transition: none; }
@@ -40,3 +40,14 @@
 .task-course-options summary::-webkit-details-marker { display: none; }
 .task-course-options[open] summary svg { transform: rotate(180deg); }
 .task-course-options[open] summary { margin-bottom: 8px; }
+
+.task-schedule-fields { display: grid; gap: 8px; }
+.schedule-select label:not(.sr-only) { display: block; margin-bottom: 6px; font-weight: 500; }
+.schedule-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.schedule-weekdays button { min-height: 44px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--surface); font-size: 13px; }
+.schedule-weekdays button[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); background: var(--accent-soft); }
+.schedule-weekly { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+.schedule-weekly .field { width: 68px; }
+.schedule-weekly .muted { margin-left: auto; font-size: 11px; }
+.task-course-plan-heading { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 12px; }
+.task-course-daily { display: grid; gap: 8px; }
