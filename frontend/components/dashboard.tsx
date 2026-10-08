@@ -148,7 +148,7 @@ export function Dashboard() {
     <a className="skip-link" href="#main-content">跳到主要内容</a>
     <aside className="sidebar">
       <a href="/" className="brand" aria-label="PawnSteps 首页"><span className="brand-symbol"><Footprints size={23} strokeWidth={2.2} /></span><span>PawnSteps<small>日拱一卒</small></span></a>
-      <div className="sidebar-label">留一点时间，给自己</div>
+      <div className="sidebar-label">日拱一卒，功不唐捐</div>
       <nav aria-label="主导航">{navigation.map(item => <button key={item.id} onClick={() => changeView(item.id)} className={`nav-item ${view === item.id ? "active" : ""}`} aria-current={view === item.id ? "page" : undefined}><item.icon size={20} /><span>{item.label}</span>{item.id === "tasks" && stats.in_progress > 0 && <span className="nav-count">{stats.in_progress}</span>}</button>)}</nav>
       <div className="sidebar-bottom">
         <div className="utility-row">
