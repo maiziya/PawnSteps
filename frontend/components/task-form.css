@@ -1,0 +1,35 @@
+.task-form-dialog.dialog-content { width: min(620px, calc(100vw - 32px)); padding: 24px; }
+.task-form-dialog .dialog-header { margin-bottom: 16px; }
+.task-form-fields { display: grid; gap: 14px; }
+.task-kind-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.task-kind-option { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 8px 4px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--muted); font-size: 13px; white-space: nowrap; transition: background-color 150ms ease; }
+.task-kind-option:hover { background: var(--surface-soft); }
+.task-kind-option.is-selected { border-color: var(--primary); color: var(--primary); background: var(--accent-soft); }
+.task-kind-option svg { flex-shrink: 0; }
+.task-settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.task-settings-grid > div { min-width: 0; }
+.task-form-dialog .field { min-width: 0; padding: 9px 11px; font-size: 14px; }
+.task-form-dialog textarea { display: block; }
+.task-custom-unit-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 6px; }
+.task-form-dialog .task-custom-unit-row .field { padding-left: 6px; padding-right: 6px; }
+.task-form-dialog textarea.task-description { min-height: 44px; height: 44px; resize: none; }
+.task-form-dialog textarea.task-plan-input { min-height: 44px; height: 44px; resize: none; }
+.task-course-import { display: grid; gap: 10px; border: 1px dashed var(--border); border-radius: 10px; padding: 12px; }
+.task-course-import .btn { min-height: 44px; }
+.task-form-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+@media (max-width: 639px) {
+  .task-form-dialog.dialog-content { padding: 20px 16px; }
+  .task-form-dialog .dialog-header h2 { font-size: 20px; }
+  .task-form-fields { gap: 12px; }
+  .task-kind-option { flex-direction: column; gap: 4px; font-size: 12px; padding: 6px 2px; }
+  .task-form-dialog .field { font-size: 16px; }
+  .task-form-footer .btn { flex: 1; }
+}
+@media (max-height: 740px) {
+  .task-form-dialog.dialog-content { padding-top: 18px; padding-bottom: 18px; }
+  .task-form-dialog .dialog-header { margin-bottom: 12px; }
+  .task-form-fields { gap: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-kind-option { transition: none; }
+}

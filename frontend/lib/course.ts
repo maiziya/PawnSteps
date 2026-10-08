@@ -8,6 +8,20 @@ export interface CourseGroup {
 
 const naturalOrder = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
 
+export function normalizeCourseItemName(name: string): string {
+  const value = name.trim();
+  if (value.endsWith('/')) return value;
+  const separator = value.lastIndexOf('|');
+  if (separator < 0 || !/^\d+$/.test(value.slice(separator + 1).trim())) return value;
+  const title = value.slice(0, separator).trimEnd();
+  // An escaped pipe is literal title text, not an exported numeric suffix.
+  return title && !title.endsWith('\\') ? title : value;
+}
+
+export function displayCourseItemName(name: string): string {
+  return normalizeCourseItemName(name).replace(/\\\|/g, '|');
+}
+
 export function parseCourseText(text: string): CourseItem[] {
   const items: CourseItem[] = [];
   for (const line of text.replace(/^\uFEFF/, '').split(/\r?\n/)) {
@@ -17,7 +31,7 @@ export function parseCourseText(text: string): CourseItem[] {
       continue;
     }
     const item = line.match(/^\s*[-*]\s+(?:\[[ xX]\]\s*)?(.+?)\s*$/);
-    if (item) items.push({ name: item[1], done: false });
+    if (item) items.push({ name: normalizeCourseItemName(item[1]), done: false });
   }
   return items;
 }
@@ -39,7 +53,7 @@ export function parseCourseDirectory(source: FileList | File[]): CourseItem[] {
     if (!folder && previousFolder) items.push({ name: '根目录/', done: false });
     previousFolder = folder;
     const name = filename.replace(/\.[^.]+$/, '') || filename;
-    items.push({ name, done: false });
+    items.push({ name: normalizeCourseItemName(name), done: false });
   }
   return items;
 }

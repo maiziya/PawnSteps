@@ -5,7 +5,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import select
 
-from conftest import assert_mutation, create_reward, create_task, register_user
+from conftest import add_record, assert_mutation, create_reward, create_task, register_user
 
 
 def bearer(payload: dict) -> dict[str, str]:
@@ -28,6 +28,7 @@ async def test_register_migrates_guest_tasks_rewards_and_keeps_bcrypt_password(
 ):
     reward = await create_reward(client, guest_headers)
     task = await create_task(client, guest_headers, reward_id=reward["id"])
+    record = (await add_record(client, guest_headers, task["id"], 1, "Guest practice"))["record"]
     payload = await register_user(client, headers=guest_headers)
     assert any(item["id"] == task["id"] for item in payload["tasks"])
     assert any(item["id"] == reward["id"] for item in payload["rewards"])
@@ -36,6 +37,11 @@ async def test_register_migrates_guest_tasks_rewards_and_keeps_bcrypt_password(
     assert "password_hash" not in payload["user"]
     empty_guest = assert_mutation(await client.get("/api/state", headers=guest_headers))
     assert empty_guest["tasks"] == []
+    migrated_records = await client.get(f"/api/tasks/{task['id']}/records", headers=bearer(payload))
+    assert migrated_records.status_code == 200
+    assert migrated_records.json()["records"][0]["id"] == record["id"]
+    assert migrated_records.json()["records"][0]["note"] == "Guest practice"
+    assert (await client.get(f"/api/tasks/{task['id']}/records", headers=guest_headers)).status_code == 404
 
     from app.models import User
     async with session_factory() as session:
@@ -92,8 +98,12 @@ async def test_password_change_revokes_prior_tokens_and_accepts_new_password(cli
 async def test_account_export_excludes_secrets_and_other_owners(client):
     first = await register_user(client, username="exportreader")
     second = await register_user(client, username="privatereader")
-    await create_task(client, bearer(first), name="Export this")
-    await create_task(client, bearer(second), name="Keep private")
+    own = await create_task(client, bearer(first), name="Export this")
+    private = await create_task(client, bearer(second), name="Keep private")
+    active = (await add_record(client, bearer(first), own["id"], 1, "Exported note"))["record"]
+    revoked = (await add_record(client, bearer(first), own["id"], 1, "Revoked note"))["record"]
+    await client.delete(f"/api/tasks/{own['id']}/records/{revoked['id']}", headers=bearer(first))
+    await add_record(client, bearer(second), private["id"], 1, "Private note")
     response = await client.get("/api/profile/export", headers=bearer(first))
     assert response.status_code == 200
     data = response.json()
@@ -102,6 +112,10 @@ async def test_account_export_excludes_secrets_and_other_owners(client):
     assert "password_hash" not in response.text
     assert "correct-horse" not in response.text
     assert "tasks" in data
+    assert data["format_version"] == 2
+    assert {row["id"] for row in data["records"]} == {active["id"], revoked["id"]}
+    assert next(row for row in data["records"] if row["id"] == revoked["id"])["deleted_at"]
+    assert "Private note" not in response.text
 
 
 async def test_guest_limits_apply_but_registration_removes_limits(client, guest_headers, monkeypatch):

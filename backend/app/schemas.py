@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Literal
 from uuid import UUID
 
@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class CourseItem(BaseModel):
     name: str = Field(min_length=1, max_length=500)
     done: bool = False
+    done_date: date | None = None
 
     @field_validator('name')
     @classmethod
@@ -20,15 +21,18 @@ class CourseItem(BaseModel):
 class TaskCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(default='', max_length=200)
+    unit: str = Field(default='步', min_length=1, max_length=12)
     target: int = Field(default=1, ge=1, le=100)
     priority: Literal['high', 'medium', 'low'] = 'medium'
     reward_id: UUID | None = None
+    daily_goal: int | None = Field(default=None, ge=1, le=10000)
+    daily_minimum: int = Field(default=0, ge=0, le=10000)
     daily_quota: int = Field(default=0, ge=0, le=10000)
     daily_plan: list[int] | None = Field(default=None, min_length=1, max_length=730)
     plan_start_date: date | None = None
     course_items: list[CourseItem] | None = Field(default=None, min_length=1, max_length=10000)
 
-    @field_validator('name')
+    @field_validator('name', 'unit')
     @classmethod
     def clean_name(cls, value: str) -> str:
         if not value.strip():
@@ -37,6 +41,17 @@ class TaskCreate(BaseModel):
 
     @model_validator(mode='after')
     def check_type(self) -> 'TaskCreate':
+        if self.daily_goal is not None:
+            if self.daily_plan is not None or self.course_items is not None:
+                raise ValueError('Separate daily goals are only supported on ordinary and daily tasks')
+            if self.daily_goal < (self.daily_quota or self.daily_minimum):
+                raise ValueError('Daily goal cannot be lower than the daily minimum')
+            if not self.daily_quota and self.daily_goal > self.target:
+                raise ValueError('Daily goal cannot exceed the total target')
+        if self.daily_minimum > self.target:
+            raise ValueError('Daily minimum cannot exceed the total target')
+        if self.daily_minimum and (self.daily_quota or self.daily_plan is not None or self.course_items is not None):
+            raise ValueError('Daily minimum is only configured separately on ordinary tasks')
         if self.daily_plan is not None:
             if any(value < -1 or value > 10000 for value in self.daily_plan):
                 raise ValueError('Plan quotas must be between -1 and 10000')
@@ -52,12 +67,15 @@ class TaskCreate(BaseModel):
 class TaskPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=200)
+    unit: str | None = Field(default=None, min_length=1, max_length=12)
     target: int | None = Field(default=None, ge=1, le=100)
     priority: Literal['high', 'medium', 'low'] | None = None
     reward_id: UUID | None = None
+    daily_goal: int | None = Field(default=None, ge=1, le=10000)
+    daily_minimum: int | None = Field(default=None, ge=0, le=10000)
     daily_quota: int | None = Field(default=None, ge=1, le=10000)
 
-    @field_validator('name')
+    @field_validator('name', 'unit')
     @classmethod
     def clean_name(cls, value: str | None) -> str | None:
         if value is not None and not value.strip():
@@ -65,8 +83,59 @@ class TaskPatch(BaseModel):
         return value.strip() if value else value
 
 
-class ProgressUpdate(BaseModel):
-    progress: int = Field(ge=0, le=1000000)
+class ProgressRecordCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    amount: int = Field(ge=1, le=1000000, strict=True)
+    note: str = Field(default='', max_length=200)
+    request_id: UUID | None = None
+
+
+class ProgressDecrement(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    request_id: UUID
+
+
+class ProgressRecordPatch(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    amount: int | None = Field(default=None, ge=1, le=1000000, strict=True)
+    note: str | None = Field(default=None, max_length=200)
+
+    @model_validator(mode='after')
+    def require_changes(self) -> 'ProgressRecordPatch':
+        if not self.model_fields_set:
+            raise ValueError('At least one record field is required')
+        if any(getattr(self, key) is None for key in self.model_fields_set):
+            raise ValueError('Record fields cannot be null')
+        return self
+
+
+class ProgressRecordOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    task_id: UUID
+    amount: int
+    note: str
+    date: date | None
+    source: Literal['manual', 'legacy']
+    request_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+    deleted_at: datetime | None
+
+    @field_validator('created_at', 'updated_at', 'deleted_at')
+    @classmethod
+    def utc_timestamp(cls, value: datetime | None) -> datetime | None:
+        # SQLite drops timezone metadata; persisted timestamps are always UTC.
+        if value is not None:
+            return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+        return value
+
+
+class ProgressRecordList(BaseModel):
+    records: list[ProgressRecordOut]
+    total: int
+    offset: int
+    limit: int
 
 
 class CourseUpdate(BaseModel):
@@ -131,13 +200,19 @@ class TaskOut(BaseModel):
     id: UUID
     name: str
     description: str
+    unit: str
     target: int
     progress: int
+    today_amount: int
+    record_count: int
+    plan_expired: bool
     is_done: bool
     done_at: datetime | None
     priority: str
     position: float
     reward_id: UUID | None
+    daily_goal: int | None
+    daily_minimum: int
     daily_quota: int
     daily_progress: int
     daily_done: bool
@@ -179,6 +254,7 @@ class MutationResponse(BaseModel):
     stats: Stats
     unlocked_reward: RewardOut | None = None
     undo_token: str | None = None
+    record: ProgressRecordOut | None = None
 
 
 class HistoryEntry(BaseModel):
@@ -186,6 +262,10 @@ class HistoryEntry(BaseModel):
     task_name: str
     date: date
     completed: bool
+    amount: int = 0
+    unit: str = "步"
+    task_kind: Literal["normal", "daily", "plan", "course"] = "daily"
+    quota: int | None = None
 
 
 class HistoryResponse(BaseModel):

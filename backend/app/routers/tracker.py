@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_owner_id
 from app.database import get_session
-from app.schemas import CourseUpdate, HistoryResponse, MutationResponse, ProgressUpdate, Reorder, RewardCreate, RewardPatch, TaskCreate, TaskPatch, UndoRequest
+from app.schemas import CourseUpdate, HistoryResponse, MutationResponse, ProgressDecrement, ProgressRecordCreate, ProgressRecordList, ProgressRecordPatch, Reorder, RewardCreate, RewardPatch, TaskCreate, TaskPatch, UndoRequest
 from app.services import tracker
 
 
@@ -54,21 +54,42 @@ async def update_task(task_id: UUID, body: TaskPatch, session: Session, owner_id
 
 
 @router.post('/tasks/{task_id}/progress', response_model=MutationResponse)
-async def set_progress(task_id: UUID, body: ProgressUpdate, session: Session, owner_id: OwnerId):
-    async with tracker.owner_transaction(session, owner_id):
-        return await tracker.set_progress(session, owner_id, task_id, body.progress)
-
-
 @router.post('/tasks/{task_id}/daily', response_model=MutationResponse)
-async def set_daily(task_id: UUID, body: ProgressUpdate, session: Session, owner_id: OwnerId):
-    async with tracker.owner_transaction(session, owner_id):
-        return await tracker.set_daily(session, owner_id, task_id, body.progress)
-
-
 @router.post('/tasks/{task_id}/daily/undo', response_model=MutationResponse)
-async def undo_daily(task_id: UUID, session: Session, owner_id: OwnerId):
+async def retired_progress(task_id: UUID, session: Session, owner_id: OwnerId):
     async with tracker.owner_transaction(session, owner_id):
-        return await tracker.set_daily(session, owner_id, task_id, 0, undo=True)
+        return await tracker.retired_progress_endpoint(session, owner_id, task_id)
+
+
+@router.get('/tasks/{task_id}/records', response_model=ProgressRecordList)
+async def records(task_id: UUID, session: Session, owner_id: OwnerId,
+                  offset: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=100)):
+    async with tracker.owner_transaction(session, owner_id):
+        return await tracker.list_records(session, owner_id, task_id, offset, limit)
+
+
+@router.post('/tasks/{task_id}/records', response_model=MutationResponse, status_code=201)
+async def create_record(task_id: UUID, body: ProgressRecordCreate, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await tracker.create_record(session, owner_id, task_id, body)
+
+
+@router.patch('/tasks/{task_id}/records/{record_id}', response_model=MutationResponse)
+async def update_record(task_id: UUID, record_id: UUID, body: ProgressRecordPatch, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await tracker.update_record(session, owner_id, task_id, record_id, body)
+
+
+@router.post('/tasks/{task_id}/decrement', response_model=MutationResponse)
+async def decrement_progress(task_id: UUID, body: ProgressDecrement, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await tracker.decrement_progress(session, owner_id, task_id, body.request_id)
+
+
+@router.delete('/tasks/{task_id}/records/{record_id}', response_model=MutationResponse)
+async def revoke_record(task_id: UUID, record_id: UUID, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await tracker.revoke_record(session, owner_id, task_id, record_id)
 
 
 @router.post('/tasks/{task_id}/course', response_model=MutationResponse)

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { createTask, expectNoHorizontalOverflow, navigate, openWorkspace, taskCard, uniqueName } from './helpers';
+import { createTask, expectNoHorizontalOverflow, navigate, openWorkspace, recordProgress, taskCard, uniqueName } from './helpers';
 
 test('mobile supports creation, progress, navigation, and both themes without overflow', async ({ page }, testInfo) => {
   const errors: string[] = [];
@@ -8,8 +8,34 @@ test('mobile supports creation, progress, navigation, and both themes without ov
   await openWorkspace(page);
   const name = uniqueName('把小步走稳');
   await createTask(page, name, { target: 3 });
-  await taskCard(page, name).getByRole('button', { name: `${name}增加一步`, exact: true }).tap();
-  await expect(taskCard(page, name).getByRole('slider')).toHaveValue('1');
+  const nextName = uniqueName('留一点时间给阅读');
+  await createTask(page, nextName, { target: 10, description: '为今天留下一点读书的时间，完成后记录最有收获的想法。' });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const cardBounds = (await taskCard(page, name).boundingBox())!;
+  const nextTitleBounds = (await taskCard(page, nextName).getByRole('heading', { name: nextName, exact: true }).boundingBox())!;
+  const navigationBounds = (await page.getByRole('navigation', { name: '移动导航', exact: true }).boundingBox())!;
+  expect(cardBounds.y).toBeGreaterThanOrEqual(0);
+  expect(cardBounds.y + cardBounds.height).toBeLessThanOrEqual(navigationBounds.y);
+  expect(nextTitleBounds.y + nextTitleBounds.height).toBeLessThanOrEqual(navigationBounds.y);
+  await expect(page.locator('.focus-summary')).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('region', { name: '任务统计', exact: true })).toBeInViewport({ ratio: 1 });
+  const quickResponse = page.waitForResponse(response => response.request().method() === 'POST' && /\/api\/tasks\/[^/]+\/records$/.test(new URL(response.url()).pathname));
+  await taskCard(page, name).getByRole('button', { name: `${name}增加1步`, exact: true }).tap();
+  expect((await quickResponse).status()).toBe(201);
+  await expect(taskCard(page, name).getByRole('progressbar', { name: `${name}总进度`, exact: true })).toHaveAttribute('aria-valuenow', '1');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await recordProgress(page, name, 1, '手机记录的一小步');
+  await page.keyboard.press('Escape');
+  await expect(taskCard(page, name).getByRole('progressbar', { name: `${name}总进度`, exact: true })).toHaveAttribute('aria-valuenow', '2');
+  await page.getByRole('button', { name: '搜索任务', exact: true }).tap();
+  const search = page.getByRole('textbox', { name: '搜索任务', exact: true });
+  await expect(search).toBeFocused();
+  await search.fill(nextName);
+  await expect(taskCard(page, name)).toHaveCount(0);
+  await expect(taskCard(page, nextName)).toBeVisible();
+  await search.fill('');
+  await page.getByRole('button', { name: '搜索任务', exact: true }).tap();
+  await expect(search).toBeHidden();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-light-375.png'), fullPage: true });
   await page.getByRole('button', { name: '切换主题', exact: true }).tap();

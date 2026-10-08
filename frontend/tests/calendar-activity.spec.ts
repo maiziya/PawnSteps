@@ -1,0 +1,56 @@
+import { expect, test } from '@playwright/test';
+import { createTask, navigate, openWorkspace, persistedState, recordProgress, taskCard, uniqueName } from './helpers';
+
+test('calendar distinguishes no work, partial, minimum met, and exceeded amounts', async ({ page }) => {
+  await openWorkspace(page);
+  const name = uniqueName('每日最低五页');
+  await createTask(page, name, { kind: 'daily', target: 10, quota: 5, unit: '页' });
+  await navigate(page, '打卡日历');
+  const today = page.locator('.calendar-day[aria-current="date"]');
+  await expect(today.locator('.calendar-day-dots i')).toHaveCount(0);
+  await navigate(page, '我的步履');
+  await taskCard(page, name).getByRole('button', { name: `${name}增加1页`, exact: true }).click();
+  await expect(taskCard(page, name).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+  await navigate(page, '打卡日历');
+  await expect(today).toHaveClass(/activity-partial/);
+  await expect(today.locator('.calendar-day-dots i')).toBeVisible();
+  await expect(page.locator('.calendar-day-detail')).toContainText('完成 1 / 5 页 · 未达标，还差 4 页');
+  expect((await persistedState(page)).stats.streak).toBe(0);
+  await page.getByRole('button', { name: '列表', exact: true }).click();
+  await expect(page.locator('.calendar-list-panel')).toContainText('完成 1 / 5 页');
+  await navigate(page, '我的步履');
+  await recordProgress(page, name, 4);
+  await page.keyboard.press('Escape');
+  await navigate(page, '打卡日历');
+  await expect(today).toHaveClass(/activity-met/);
+  await expect(page.locator('.calendar-day-detail')).toContainText('完成 5 / 5 页 · 已达标');
+  expect((await persistedState(page)).stats.streak).toBe(1);
+  await navigate(page, '我的步履');
+  await taskCard(page, name).getByRole('button', { name: `${name}增加1页`, exact: true }).click();
+  await expect(taskCard(page, name).getByRole('progressbar')).toHaveAttribute('aria-valuetext', '今日 6 / 5 页');
+  await navigate(page, '打卡日历');
+  await expect(today).toHaveClass(/activity-exceeded/);
+  await expect(page.locator('.calendar-day-detail')).toContainText('完成 6 / 5 页 · 超额完成 1 页');
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.screenshot({ path: '/tmp/pawnsteps-calendar-activity-mobile.png' });
+});
+
+test('ordinary progress and individual course checks appear without requiring a finished task', async ({ page }) => {
+  await openWorkspace(page);
+  const name = uniqueName('普通进度');
+  await createTask(page, name, { target: 20, quota: 5, unit: '页' });
+  await taskCard(page, name).getByRole('button', { name: `${name}增加1页`, exact: true }).click();
+  await expect(taskCard(page, name).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+  const headers = { 'X-Guest-Id': await page.evaluate(() => localStorage.getItem('pawnsteps-guest-id')!) };
+  const response = await page.request.post('/api/tasks', { headers, data: { name: 'Course activity', course_items: [{ name: 'One' }, { name: 'Two' }] } });
+  expect(response.ok()).toBeTruthy();
+  const course = (await response.json()).tasks.find((task: { name: string }) => task.name === 'Course activity');
+  expect((await page.request.post(`/api/tasks/${course.id}/course`, { headers, data: { indices: [0], done: true } })).ok()).toBeTruthy();
+  await navigate(page, '打卡日历');
+  await expect(page.locator('.calendar-day-detail')).toContainText(name);
+  await expect(page.locator('.calendar-day-detail')).toContainText('完成 1 / 5 页 · 未达标，还差 4 页');
+  await expect(page.locator('.calendar-day-detail')).toContainText('Course activity');
+  await expect(page.locator('.calendar-day-detail')).toContainText('完成 1 节');
+  await expect(page.locator('.calendar-day[aria-current="date"] .calendar-day-dots i')).toHaveCount(1);
+  expect((await persistedState(page)).stats.streak).toBe(0);
+});

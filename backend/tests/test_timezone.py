@@ -23,8 +23,8 @@ async def test_mutation_date_matches_configured_timezone_across_midnight(client,
     assert created["today"] == task["daily_date"] == "2026-10-07"
     assert created["timezone"] == "America/Los_Angeles"
     completed = assert_mutation(await client.post(
-        f"/api/tasks/{task['id']}/daily", headers=guest_headers, json={"progress": 1},
-    ))
+        f"/api/tasks/{task['id']}/records", headers=guest_headers, json={"amount": 1},
+    ), status=201)
     assert completed["today"] == "2026-10-07"
     assert completed["tasks"][0]["daily_done"] is True
 

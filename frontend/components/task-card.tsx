@@ -1,99 +1,142 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useId, useState } from 'react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, useReducedMotion } from 'framer-motion';
-import { BookOpen, CalendarDays, Check, Flag, Gift, GripVertical, Minus, MoreHorizontal, Plus, RotateCcw, Sun, Trash2 } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, Check, FileText, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Trash2 } from 'lucide-react';
 import type { Task } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
-import { CourseItems } from '@/components/course-items';
+import './task-card.css';
 
-export function TaskCard({ task, onEdit }: { task: Task; onEdit: (task: Task) => void }) {
+interface TaskCardProps {
+  task: Task;
+  onEdit: (task: Task) => void;
+  onOpenCourse: (taskId: string) => void;
+  onOpenRecords: (taskId: string) => void;
+}
+
+export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: task.is_done });
   const mutate = useAppStore(state => state.mutate);
   const busy = useAppStore(state => state.busy);
+  const quickRecord = useAppStore(state => state.quickRecord);
+  const feedback = useAppStore(state => state.quickFeedback[task.id]);
   const reward = useAppStore(state => state.rewards.find(reward => reward.id === task.reward_id));
   const reducedMotion = useReducedMotion();
+  const descriptionId = useId();
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
   const isCourse = task.course_items !== null;
   const isPlan = task.daily_plan !== null;
   const isDaily = task.daily_quota > 0 || isPlan;
-  const current = isDaily ? task.daily_progress : task.progress;
-  const maximum = isDaily ? task.daily_quota : task.target;
-  const [preview, setPreview] = useState(current);
-  useEffect(() => setPreview(current), [current]);
-  const restDay = isPlan && maximum === 0 && task.daily_done;
-  const inactivePlan = isPlan && maximum === 0;
-  const locked = Boolean(busy) || inactivePlan || (isDaily && task.is_done && !task.daily_done);
-  const percent = maximum ? Math.min(100, (preview / maximum) * 100) : (task.daily_done || task.is_done ? 100 : 0);
+  const dailyMinimum = task.daily_quota || task.daily_minimum;
+  const dailyGoal = task.daily_goal ?? dailyMinimum;
+  const restDay = isPlan && task.daily_quota === 0 && task.daily_done;
+  const inactivePlan = isPlan && task.daily_quota === 0;
+  const canRecord = !task.plan_expired && !inactivePlan && (!task.is_done || (isDaily && task.daily_done));
+  const canDecrement = !task.plan_expired && !inactivePlan && (isDaily ? task.today_amount > 0 : task.progress > 0);
+  const saving = feedback?.phase === 'saving';
+  const previewing = saving && !feedback.isRetry && !(feedback.amount < 0 && !isDaily && feedback.wasComplete);
+  const useDailyMeter = isDaily && task.daily_quota > 0 && !task.plan_expired && (!task.is_done || task.daily_done || task.today_amount > 0);
+  const todayAmount = previewing ? Math.max(0, feedback.previousToday + feedback.amount) : task.today_amount;
+  const meterMaximum = useDailyMeter ? dailyGoal : task.target;
+  const meterCurrent = useDailyMeter ? Math.min(meterMaximum, todayAmount) : Math.max(0, Math.min(task.target, previewing ? feedback.previousProgress + feedback.amount : task.progress));
+  const percent = meterMaximum ? Math.min(100, meterCurrent / meterMaximum * 100) : 0;
   const Icon = isCourse ? BookOpen : isPlan ? CalendarDays : isDaily ? Sun : Flag;
-  const kind = isCourse ? '课程学习' : isPlan ? '天数计划' : isDaily ? '每日打卡' : '目标任务';
   const priority = { high: '高优先级', medium: '中优先级', low: '低优先级' }[task.priority];
-
-  async function commit(value: number) {
-    if (locked || value === current) return;
-    const bounded = Math.max(0, Math.min(maximum, value));
-    setPreview(bounded);
-    try { await mutate(`/tasks/${task.id}/${isDaily ? 'daily' : 'progress'}`, { progress: bounded }); }
-    catch { setPreview(current); }
-  }
+  const detailsLabel = task.description ? '说明' : '详情';
+  const totalUnit = isCourse ? '节' : isDaily && !isPlan ? '天' : task.unit;
+  const totalLabel = `${task.progress} / ${task.target} ${totalUnit}`;
+  const minimumLabel = restDay ? '今日休息' : inactivePlan ? (task.plan_expired ? '计划已结束' : `${task.plan_start_date} 开始`) : dailyMinimum > 0 ? `最小完成 ${dailyMinimum} ${task.unit}` : '最小完成 未设置';
+  const meterLabel = `${useDailyMeter ? todayAmount : meterCurrent} / ${meterMaximum} ${isDaily && !isPlan && !useDailyMeter ? '天' : task.unit}`;
+  const meterCaption = useDailyMeter ? '今日进度' : '总进度';
 
   async function remove() {
     try { await mutate(`/tasks/${task.id}`, undefined, 'DELETE'); } catch { /* Store displays the error. */ }
   }
 
-  async function undoDay() {
-    try { await mutate(`/tasks/${task.id}/daily/undo`); } catch { /* Store displays the error. */ }
+  async function record(amount: number) {
+    const allowed = amount < 0 ? canDecrement : canRecord;
+    const retry = feedback?.phase === 'failed' && feedback.amount === amount;
+    if ((!allowed && !retry) || busy || saving) return;
+    try { await quickRecord(task.id, amount); } catch { /* Store keeps the failed request available for retry. */ }
   }
 
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 20 : undefined }} className="relative">
-      <motion.article layout={!isDragging && !reducedMotion} initial={reducedMotion ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`panel task-card p-5 sm:p-6 ${task.is_done ? 'task-completed' : ''}`}>
-        <div className="flex items-start gap-3">
-          <div className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${task.is_done ? 'bg-[var(--success)]/12 text-[var(--success)]' : 'bg-[var(--background)] text-[var(--primary)]'}`}>
-            {task.is_done ? <motion.span key="check" initial={reducedMotion ? false : { scale: 0.6 }} animate={{ scale: 1 }}><Check size={21} /></motion.span> : <Icon size={20} strokeWidth={1.7} />}
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 20 : undefined }} className="task-sortable">
+      <motion.article data-quick-task={task.id} layout={!isDragging && !reducedMotion} initial={reducedMotion ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`panel task-card compact-task-card ${task.is_done ? 'task-completed' : ''}`}>
+        <div className="compact-task-heading">
+          <div className={`compact-task-icon ${task.is_done ? 'is-complete' : ''}`} aria-hidden="true">
+            {task.is_done ? <motion.span key="check" initial={reducedMotion ? false : { scale: 0.6 }} animate={{ scale: 1 }}><Check size={20} /></motion.span> : <Icon size={19} strokeWidth={1.7} />}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--muted)]">
-              <span>{kind}</span>
-              <span className={`flex items-center gap-1 ${task.priority === 'high' ? 'text-[var(--primary)]' : ''}`}><span className={`h-1.5 w-1.5 rounded-full ${task.priority === 'high' ? 'bg-[var(--primary)]' : task.priority === 'medium' ? 'bg-[var(--accent)]' : 'bg-[var(--muted)]/40'}`} />{priority}</span>
+          <div className="compact-task-title">
+            <div className="compact-task-name-row">
+              <h3 title={task.name}>{task.name}</h3>
+              {task.priority === 'high' && <span className="compact-task-priority priority-high" title={priority} aria-label={priority}>优先</span>}
+              {reward && <span className="compact-task-reward" title={`关联奖励：${reward.name}`} aria-label={`关联奖励：${reward.name}`}><Gift size={14} aria-hidden="true" /></span>}
             </div>
-            <h3 className={`break-words text-base font-semibold leading-relaxed sm:text-[17px] ${task.is_done ? 'text-[var(--muted)]' : ''}`}>{task.name}</h3>
-            {task.description && <p className="mt-1 break-words text-sm leading-relaxed text-[var(--muted)]">{task.description}</p>}
+            {!isCourse && <div className="compact-task-meta">
+              <span className={task.daily_done || task.is_done ? 'is-complete' : undefined} aria-label={`${task.name}已完成量`} title={`${dailyGoal > 0 ? `每日目标 ${dailyGoal} ${task.unit}，` : ''}${minimumLabel}`}>{restDay || inactivePlan ? minimumLabel : `今日 ${todayAmount}${dailyGoal > 0 ? ` / ${dailyGoal}` : ''} ${task.unit}`}</span>
+            </div>}
           </div>
-          <div className="-mr-2 -mt-2 flex shrink-0">
-            <button type="button" onClick={() => onEdit(task)} className="icon-button" aria-label={`编辑${task.name}`} title="编辑任务"><MoreHorizontal size={18} /></button>
-            {!task.is_done && <button type="button" {...attributes} {...listeners} className="icon-button touch-none cursor-grab active:cursor-grabbing" aria-label={`拖动排序${task.name}`} title="拖动排序"><GripVertical size={17} /></button>}
+          <div className="compact-task-actions">
+            {!task.is_done && <button type="button" {...attributes} {...listeners} disabled={busy} className="icon-button compact-task-button compact-task-drag" aria-label={`拖动排序${task.name}`} title="拖动排序"><GripVertical size={17} /></button>}
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button type="button" className="icon-button compact-task-button" aria-label={`任务操作：${task.name}`} title="任务操作"><MoreHorizontal size={20} /></button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="task-action-menu" align="end" sideOffset={6} collisionPadding={12}>
+                  <DropdownMenu.Item disabled={busy || saving} className="task-action-item" aria-label={`编辑${task.name}`} onSelect={() => onEdit(task)}><Pencil size={16} />编辑任务</DropdownMenu.Item>
+                  {!isCourse && <DropdownMenu.Item disabled={busy || saving} className="task-action-item" aria-label={`${task.name}查看记录`} onSelect={() => onOpenRecords(task.id)}><History size={16} />查看记录</DropdownMenu.Item>}
+                  <DropdownMenu.Item className="task-action-item" onSelect={() => setDescriptionOpen(open => !open)} aria-controls={descriptionId} aria-expanded={descriptionOpen}><FileText size={16} />{`${descriptionOpen ? '收起' : '查看'}${detailsLabel}`}</DropdownMenu.Item>
+                  <DropdownMenu.Separator className="task-action-separator" />
+                  <DropdownMenu.Item disabled={busy} className="task-action-item task-action-delete" aria-label={`删除${task.name}`} onSelect={() => void remove()}><Trash2 size={16} />删除任务</DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
           </div>
         </div>
 
-        {isCourse ? <>
-          <div className="mt-5 flex items-center justify-between text-xs text-[var(--muted)]"><span>{task.is_done ? '课程已完成' : '学习进度'}</span><span className="tabular-nums">{task.progress} / {task.target} 节</span></div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--border)]"><div className="h-full rounded-full bg-[var(--success)] transition-[width]" style={{ width: `${task.target ? task.progress / task.target * 100 : 0}%` }} /></div>
-          <CourseItems task={task} />
-        </> : <div className="mt-5">
-          <div className="mb-3 flex items-center justify-between gap-2 text-xs">
-            <span className={task.daily_done || task.is_done ? 'text-[var(--success)]' : 'text-[var(--muted)]'}>{restDay ? '今天是休息日，安心休息' : isPlan && maximum === 0 ? (task.is_done ? '计划已完成' : `${task.plan_start_date} 开始`) : isDaily ? (task.daily_done ? '今日已达标' : '今日进度') : task.is_done ? '目标已完成' : '每一步，都算数'}</span>
-            <span className="shrink-0 tabular-nums text-[var(--muted)]">{isDaily ? `${task.progress} / ${task.target} ${isPlan ? '步' : '天'}` : `${task.progress} / ${task.target} 步`}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button type="button" disabled={locked || preview <= 0} className="icon-button shrink-0 rounded-full border border-[var(--border)]" aria-label={`${task.name}减少一步`} onClick={() => void commit(preview - 1)}><Minus size={16} /></button>
-            <div className="relative flex h-11 flex-1 items-center">
-              <div className="pointer-events-none absolute left-0 right-0 h-2 overflow-hidden rounded-full bg-[var(--border)]"><div className={`h-full rounded-full transition-[width] duration-150 ${percent >= 100 ? 'bg-[var(--success)]' : 'bg-[var(--primary)]'}`} style={{ width: `${percent}%` }} /></div>
-              <input type="range" min={0} max={Math.max(1, maximum)} step={1} value={inactivePlan ? (task.daily_done || task.is_done ? 1 : 0) : preview} disabled={locked} aria-label={`${task.name}${isDaily ? '今日' : ''}进度`} aria-valuetext={`${preview} / ${maximum}`} onChange={event => setPreview(Number(event.target.value))} onPointerUp={event => void commit(Number(event.currentTarget.value))} onPointerCancel={() => setPreview(current)} onKeyUp={event => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) void commit(Number(event.currentTarget.value)); }} className="task-range relative z-10 w-full cursor-pointer disabled:cursor-default" />
+        {isCourse ? <div className="compact-course-progress">
+          <div className="compact-course-meter">
+            <div className="compact-course-meter-label"><span>学习进度</span><span>{totalLabel}</span></div>
+            <div className="compact-progress-track" role="progressbar" aria-label={`${task.name}课程进度`} aria-valuemin={0} aria-valuemax={task.target} aria-valuenow={task.progress}>
+              <div className="compact-progress-fill is-complete" style={{ width: `${task.target ? task.progress / task.target * 100 : 0}%` }} />
             </div>
-            <button type="button" disabled={locked || preview >= maximum} className="icon-button shrink-0 rounded-full border border-[var(--border)]" aria-label={`${task.name}增加一步`} onClick={() => void commit(preview + 1)}><Plus size={16} /></button>
-            <span className="w-9 shrink-0 text-right text-sm font-semibold tabular-nums">{inactivePlan ? '—' : preview}</span>
+          </div>
+          <button type="button" className="compact-course-open" aria-label={`${task.name}${task.is_done ? '查看课程' : '继续学习'}`} onClick={() => onOpenCourse(task.id)}>{task.is_done ? '查看课程' : '继续学习'}<ArrowRight size={16} /></button>
+        </div> : <div className={`compact-quick-progress ${task.is_done ? 'is-readonly' : ''}`}>
+          <div className="compact-course-meter">
+            <div className="compact-course-meter-label"><span>{meterCaption}</span><span title={meterLabel}>{meterLabel}</span></div>
+            <div className="compact-progress-track" role="progressbar" aria-label={`${task.name}${useDailyMeter ? '今日' : '总'}进度`} aria-valuemin={0} aria-valuemax={meterMaximum} aria-valuenow={meterCurrent} aria-valuetext={`${useDailyMeter ? '今日 ' : ''}${meterLabel}`}>
+              <div className={`compact-progress-fill ${percent >= 100 && !task.plan_expired ? 'is-complete' : ''}`} style={{ width: `${percent}%` }} />
+            </div>
+          </div>
+          <div className="compact-quick-actions">
+            {!task.is_done && <div className="compact-stepper" role="group" aria-label={`${task.name}调整进度`}>
+            {[-1, 1, 5].map(amount => {
+              const retry = feedback?.phase === 'failed' && feedback.amount === amount;
+              const allowed = amount < 0 ? canDecrement : canRecord;
+              return <button key={amount} type="button" className={`compact-quick-button ${amount < 0 ? 'is-decrement' : ''} ${retry ? 'is-retry' : ''}`} disabled={busy || saving || (!allowed && !retry)} aria-label={`${task.name}${amount < 0 ? '减少' : '增加'}${Math.abs(amount)}${task.unit}`} title={retry ? `重试确认 ${amount} ${task.unit}` : amount < 0 ? `修正最近记录，减少 1 ${task.unit}` : `记录 ${amount} ${task.unit}`} onClick={() => void record(amount)}><span aria-hidden="true" className="compact-step-sign">{amount > 0 ? '+' : '−'}</span><span aria-hidden="true">{Math.abs(amount)}</span></button>;
+            })}
+            </div>}
+            {task.is_done && feedback?.phase === 'failed' && <button type="button" className="compact-history-button with-label" disabled={busy || saving} aria-label={`${task.name}重试确认`} onClick={() => void record(feedback.amount)}>重试确认</button>}
+            <button type="button" className="compact-history-button" disabled={busy || saving} data-record-trigger={task.id} aria-label={`${task.name}查看记录`} title={task.is_done ? '查看或修正记录' : '查看记录或填写其他完成量'} onClick={() => onOpenRecords(task.id)}><History size={17} /></button>
           </div>
         </div>}
 
-        <div className="-mb-2 mt-3 flex min-h-10 items-center justify-between gap-2 border-t border-[var(--border)] pt-2">
-          {reward ? <span className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--muted)]"><Gift size={13} className="shrink-0" /><span className="truncate">{reward.name}</span></span> : <span className="text-xs text-[var(--muted)]">{isDaily && maximum > 0 ? `每日 ${maximum} 步的小积累` : task.is_done ? '又向前走了一步' : '专注当下这一小步'}</span>}
-          <div className="-mr-2 flex items-center">
-            {isDaily && task.daily_done && !restDay && <button type="button" disabled={Boolean(busy)} onClick={() => void undoDay()} className="flex min-h-11 items-center gap-1 px-2 text-xs text-[var(--muted)]" title="撤销今日达标"><RotateCcw size={13} />撤销达标</button>}
-            <button type="button" disabled={Boolean(busy)} onClick={() => void remove()} className="icon-button text-[var(--muted)]" aria-label={`删除${task.name}`} title="删除任务，可在 5 秒内撤销"><Trash2 size={14} /></button>
-          </div>
-        </div>
+        {descriptionOpen && <div id={descriptionId} className="compact-task-description">
+          <dl className="compact-task-facts">
+            <div><dt>任务总量</dt><dd>{task.target} {totalUnit}</dd></div>
+            <div><dt>累计完成</dt><dd>{task.progress} {totalUnit}</dd></div>
+            {!isCourse && <><div><dt>每日目标量</dt><dd>{dailyGoal > 0 ? `${dailyGoal} ${task.unit}` : '未设置'}</dd></div><div><dt>最小完成量</dt><dd>{dailyMinimum > 0 ? `${dailyMinimum} ${task.unit}` : restDay ? '休息日' : '未设置'}</dd></div></>}
+            <div><dt>优先级</dt><dd>{priority}</dd></div>
+          </dl>
+          {task.description && <p>{task.description}</p>}{reward && <p className="compact-task-reward-detail"><Gift size={15} aria-hidden="true" /><span>关联奖励：{reward.name}</span></p>}
+          <button type="button" onClick={() => setDescriptionOpen(false)}>{`收起${detailsLabel}`}</button>
+        </div>}
       </motion.article>
     </div>
   );

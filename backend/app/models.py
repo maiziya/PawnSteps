@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, timezone
+from datetime import date as DateValue
 
 from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
@@ -56,6 +57,7 @@ class Task(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(String(200), default='')
+    unit: Mapped[str] = mapped_column(String(12), default='步', server_default='步')
     target: Mapped[int] = mapped_column(Integer, default=1)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     is_done: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -63,6 +65,8 @@ class Task(Base):
     priority: Mapped[str] = mapped_column(String(10), default='medium')
     position: Mapped[float] = mapped_column(Float, default=0)
     reward_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('rewards.id', ondelete='SET NULL'))
+    daily_goal: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    daily_minimum: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     daily_quota: Mapped[int] = mapped_column(Integer, default=0)
     daily_progress: Mapped[int] = mapped_column(Integer, default=0)
     daily_done: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -77,6 +81,7 @@ class Task(Base):
     undo_token: Mapped[str | None] = mapped_column(String(128), unique=True)
     undo_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     history: Mapped[list['DailyHistory']] = relationship(back_populates='task', cascade='all, delete-orphan', lazy='selectin')
+    records: Mapped[list['ProgressRecord']] = relationship(back_populates='task', cascade='all, delete-orphan')
 
 
 class DailyHistory(Base):
@@ -85,7 +90,41 @@ class DailyHistory(Base):
     date: Mapped[date] = mapped_column(Date, primary_key=True)
     completed: Mapped[bool] = mapped_column(Boolean, default=False)
     progress: Mapped[int] = mapped_column(Integer, default=0)
+    quota: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
     task: Mapped[Task] = relationship(back_populates='history')
+
+
+class ProgressRecord(Base):
+    __tablename__ = 'progress_records'
+    __table_args__ = (
+        UniqueConstraint('task_id', 'request_id', name='uq_record_task_request'),
+        CheckConstraint('amount > 0 AND amount <= 1000000', name='ck_record_amount'),
+        CheckConstraint("source IN ('manual', 'legacy')", name='ck_record_source'),
+        Index('ix_record_task_date', 'task_id', 'date', 'created_at'),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('tasks.id', ondelete='CASCADE'))
+    amount: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str] = mapped_column(String(200), default='')
+    date: Mapped[DateValue | None] = mapped_column(Date, nullable=True)
+    source: Mapped[str] = mapped_column(String(10), default='manual')
+    request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    task: Mapped[Task] = relationship(back_populates='records')
+    adjustments: Mapped[list['ProgressAdjustment']] = relationship(back_populates='record', cascade='all, delete-orphan')
+
+
+class ProgressAdjustment(Base):
+    """A decrement receipt survives record edits and revocation for safe retries."""
+    __tablename__ = 'progress_adjustments'
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('tasks.id', ondelete='CASCADE'), primary_key=True)
+    request_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    record_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('progress_records.id', ondelete='CASCADE'), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    record: Mapped[ProgressRecord] = relationship(back_populates='adjustments')
 
 
 class EmailCode(Base):

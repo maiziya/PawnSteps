@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import AsyncIterator
+from datetime import date
 from uuid import uuid4
 
 import pytest
@@ -63,6 +64,15 @@ def other_guest_headers() -> dict[str, str]:
     return {"X-Guest-Id": str(uuid4())}
 
 
+@pytest.fixture
+def frozen_day(monkeypatch):
+    from app.services import tracker
+
+    clock = {"date": date(2026, 10, 8)}
+    monkeypatch.setattr(tracker, "today", lambda: clock["date"])
+    return clock
+
+
 def assert_mutation(response, status: int = 200) -> dict:
     assert response.status_code == status, response.text
     result = response.json()
@@ -85,6 +95,13 @@ async def create_reward(client, headers, name: str = "A quiet afternoon", **fiel
     assert response.status_code in (200, 201), response.text
     state = assert_mutation(response, response.status_code)
     return next(reward for reward in state["rewards"] if reward["name"] == name)
+
+
+async def add_record(client, headers, task_id: str, amount: int, note: str = "", **fields) -> dict:
+    return assert_mutation(await client.post(
+        f"/api/tasks/{task_id}/records", headers=headers,
+        json={"amount": amount, "note": note, **fields},
+    ), status=201)
 
 
 async def register_user(client, username: str = "testreader", headers=None, **fields) -> dict:

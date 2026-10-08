@@ -5,16 +5,7 @@ from datetime import date, timedelta
 import pytest
 from sqlalchemy import select
 
-from conftest import assert_mutation, create_task
-
-
-@pytest.fixture
-def frozen_day(monkeypatch):
-    from app.services import tracker
-
-    clock = {"date": date(2026, 10, 8)}
-    monkeypatch.setattr(tracker, "today", lambda: clock["date"])
-    return clock
+from conftest import add_record, assert_mutation, create_task
 
 
 async def history_for(session_factory, task_id):
@@ -28,26 +19,34 @@ async def history_for(session_factory, task_id):
 async def test_daily_quota_completion_is_idempotent_and_reversible(
     client, guest_headers, session_factory, frozen_day
 ):
+    from uuid import uuid4
+
     task = await create_task(client, guest_headers, daily_quota=5, target=2)
-    path = f"/api/tasks/{task['id']}/daily"
-    partial = assert_mutation(await client.post(path, headers=guest_headers, json={"progress": 4}))
+    path = f"/api/tasks/{task['id']}/records"
+    partial = await add_record(client, guest_headers, task["id"], 4, "Morning practice")
     assert partial["tasks"][0]["daily_progress"] == 4
     assert partial["tasks"][0]["daily_done"] is False
     assert partial["tasks"][0]["progress"] == 0
 
-    first = assert_mutation(await client.post(path, headers=guest_headers, json={"progress": 5}))
+    request_id = str(uuid4())
+    first = await add_record(client, guest_headers, task["id"], 1, request_id=request_id)
     assert first["tasks"][0]["daily_done"] is True
     assert first["tasks"][0]["progress"] == 1
     assert first["stats"]["streak"] == 1
-    repeated = assert_mutation(await client.post(path, headers=guest_headers, json={"progress": 5}))
-    assert repeated["tasks"][0]["progress"] == 1
+    repeated = await add_record(client, guest_headers, task["id"], 1, request_id=request_id)
+    assert repeated["record"]["id"] == first["record"]["id"]
+    assert repeated["tasks"][0]["today_amount"] == 5
+    assert repeated["tasks"][0]["record_count"] == 2
     records = await history_for(session_factory, task["id"])
     assert len(records) == 1
     assert records[0].date == frozen_day["date"]
     assert records[0].completed is True
 
-    undone = assert_mutation(await client.post(f"{path}/undo", headers=guest_headers))
+    undone = assert_mutation(await client.delete(
+        f"{path}/{first['record']['id']}", headers=guest_headers,
+    ))
     assert undone["tasks"][0]["daily_done"] is False
+    assert undone["tasks"][0]["daily_progress"] == 4
     assert undone["tasks"][0]["progress"] == 0
     assert undone["stats"]["streak"] == 0
     records = await history_for(session_factory, task["id"])
@@ -58,8 +57,8 @@ async def test_crossday_reset_preserves_total_and_history(
     client, guest_headers, session_factory, frozen_day
 ):
     task = await create_task(client, guest_headers, daily_quota=2, target=3)
-    path = f"/api/tasks/{task['id']}/daily"
-    assert_mutation(await client.post(path, headers=guest_headers, json={"progress": 2}))
+    path = f"/api/tasks/{task['id']}/records"
+    await add_record(client, guest_headers, task["id"], 2)
     yesterday = frozen_day["date"]
     frozen_day["date"] += timedelta(days=1)
     reset = assert_mutation(await client.get("/api/tasks", headers=guest_headers))
@@ -69,7 +68,7 @@ async def test_crossday_reset_preserves_total_and_history(
     assert reset["tasks"][0]["progress"] == 1
     # The specified streak starts at today, so it is zero until today's check-in.
     assert reset["stats"]["streak"] == 0
-    completed = assert_mutation(await client.post(path, headers=guest_headers, json={"progress": 2}))
+    completed = await add_record(client, guest_headers, task["id"], 2)
     assert completed["tasks"][0]["progress"] == 2
     assert completed["stats"]["streak"] == 2
     records = await history_for(session_factory, task["id"])
@@ -78,11 +77,11 @@ async def test_crossday_reset_preserves_total_and_history(
 
 async def test_undo_daily_completion_reopens_finished_task(client, guest_headers, frozen_day):
     task = await create_task(client, guest_headers, daily_quota=1, target=1)
-    path = f"/api/tasks/{task['id']}/daily"
-    complete = assert_mutation(await client.post(path, headers=guest_headers, json={"progress": 1}))
+    path = f"/api/tasks/{task['id']}/records"
+    complete = await add_record(client, guest_headers, task["id"], 1)
     assert complete["tasks"][0]["is_done"] is True
     assert complete["stats"]["xp"] == 100
-    undo = assert_mutation(await client.post(f"{path}/undo", headers=guest_headers))
+    undo = assert_mutation(await client.delete(f"{path}/{complete['record']['id']}", headers=guest_headers))
     assert undo["tasks"][0]["is_done"] is False
     assert undo["tasks"][0]["progress"] == 0
     assert undo["stats"]["xp"] == 0
@@ -98,9 +97,7 @@ async def test_plan_tracks_units_rest_days_and_automatic_end(
     )
     assert task["target"] == 45
     assert task["daily_quota"] == 10
-    state = assert_mutation(await client.post(
-        f"/api/tasks/{task['id']}/daily", headers=guest_headers, json={"progress": 4}
-    ))
+    state = await add_record(client, guest_headers, task["id"], 4)
     assert state["tasks"][0]["progress"] == 4
     assert state["tasks"][0]["daily_done"] is False
 
@@ -124,7 +121,8 @@ async def test_plan_tracks_units_rest_days_and_automatic_end(
     frozen_day["date"] = start + timedelta(days=7)
     finished = assert_mutation(await client.get("/api/state", headers=guest_headers))
     assert finished["tasks"][0]["is_done"] is True
-    assert finished["tasks"][0]["progress"] == 45
+    assert finished["tasks"][0]["progress"] == 4
+    assert finished["tasks"][0]["plan_expired"] is True
     assert finished["stats"]["xp"] == 100
 
 
@@ -134,7 +132,7 @@ async def test_future_plan_cannot_be_advanced(client, guest_headers, frozen_day)
         plan_start_date=(frozen_day["date"] + timedelta(days=1)).isoformat(),
     )
     response = await client.post(
-        f"/api/tasks/{task['id']}/daily", headers=guest_headers, json={"progress": 2}
+        f"/api/tasks/{task['id']}/records", headers=guest_headers, json={"amount": 2}
     )
     assert response.status_code in (400, 409, 422)
     state = assert_mutation(await client.get("/api/state", headers=guest_headers))
@@ -155,9 +153,7 @@ async def test_milestones_are_idempotent_undeletable_and_unlock_at_streak(
 
     task = await create_task(client, guest_headers, daily_quota=1, target=10)
     for index in range(3):
-        state = assert_mutation(await client.post(
-            f"/api/tasks/{task['id']}/daily", headers=guest_headers, json={"progress": 1}
-        ))
+        state = await add_record(client, guest_headers, task["id"], 1)
         if index < 2:
             frozen_day["date"] += timedelta(days=1)
     assert state["stats"]["streak"] == 3

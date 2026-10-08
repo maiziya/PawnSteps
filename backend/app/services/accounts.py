@@ -19,7 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import create_access_token, hash_password, verify_password
 from app.config import settings
-from app.models import AuthRate, AuthState, DailyHistory, EmailCode, Owner, Reward, Task, User
+from app.models import AuthRate, AuthState, DailyHistory, EmailCode, Owner, ProgressRecord, Reward, Task, User
+from app.schemas import ProgressRecordOut
 from app.services import tracker
 from app.services.storage import save_image
 
@@ -373,9 +374,14 @@ async def export_data(session: AsyncSession, user_id: UUID) -> dict:
         state = await tracker.snapshot(session, f"user:{user.id}")
         history = (await session.execute(select(DailyHistory, Task.name).join(Task, Task.id == DailyHistory.task_id)
             .where(Task.owner_id == f"user:{user.id}").order_by(DailyHistory.date, Task.name))).all()
-        result = {"format_version": 1, "exported_at": _now(), "user": public_user(user), **state,
+        records = (await session.scalars(select(ProgressRecord).join(Task, Task.id == ProgressRecord.task_id)
+            .where(Task.owner_id == f"user:{user.id}")
+            .order_by(ProgressRecord.created_at, ProgressRecord.id))).all()
+        result = {"format_version": 2, "exported_at": _now(), "user": public_user(user), **state,
+                  "records": [ProgressRecordOut.model_validate(record) for record in records],
                   "daily_history": [{"task_id": str(entry.task_id), "task_name": name,
-                                     "date": entry.date, "completed": entry.completed} for entry, name in history]}
+                                     "date": entry.date, "completed": entry.completed,
+                                     "progress": entry.progress, "quota": entry.quota} for entry, name in history]}
     return result
 
 

@@ -1,0 +1,85 @@
+.task-sortable { position: relative; min-width: 0; }
+.compact-task-card { padding: 12px 16px; border-radius: 18px; }
+.compact-task-heading { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.compact-task-icon { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border-radius: 11px; background: var(--background); color: var(--primary); }
+.compact-task-icon.is-complete { background: var(--success-soft); color: var(--success); }
+.compact-task-icon>span { display: flex; }
+.compact-task-title { min-width: 0; flex: 1; }
+.compact-task-name-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.compact-task-name-row h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 600; line-height: 24px; }
+.task-completed .compact-task-name-row h3 { color: var(--muted); }
+.compact-task-priority { display: inline-flex; flex-shrink: 0; color: var(--muted); font-size: 12px; line-height: 18px; font-weight: 500; }
+.compact-task-priority.priority-high { color: var(--primary); }
+.compact-task-reward { display: inline-flex; color: var(--muted); flex-shrink: 0; }
+.compact-task-meta { display: flex; align-items: center; flex-wrap: wrap; column-gap: 12px; row-gap: 2px; min-width: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
+.compact-task-meta>span { max-width: 100%; overflow-wrap: anywhere; }
+.compact-task-meta>span.is-complete { color: var(--success); }
+.compact-task-actions { display: flex; align-items: center; flex-shrink: 0; margin-right: -8px; }
+.compact-task-button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+.compact-task-drag { touch-action: none; cursor: grab; }
+.compact-task-drag:active { cursor: grabbing; }
+.compact-progress-track { height: 6px; overflow: hidden; border-radius: 8px; background: var(--border); }
+.compact-progress-fill { height: 100%; border-radius: inherit; background: var(--primary); transition: width 380ms cubic-bezier(.2,.75,.25,1), background-color 200ms ease; }
+.compact-progress-fill.is-complete { background: var(--success); }
+.compact-course-progress { display: flex; align-items: center; gap: 20px; min-height: 44px; margin-top: 6px; }
+.compact-quick-progress { display: grid; grid-template-columns: minmax(100px,1fr) auto; align-items: center; gap: 18px; min-height: 44px; margin-top: 6px; }
+.compact-quick-actions { display: flex; align-items: center; gap: 6px; }
+.compact-stepper { position: relative; display: grid; grid-template-columns: repeat(3, minmax(44px, 1fr)); padding: 2px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); }
+.compact-stepper::before, .compact-stepper::after { content: ""; position: absolute; z-index: 1; top: 12px; bottom: 12px; width: 1px; background: color-mix(in srgb, var(--muted) 25%, var(--border)); pointer-events: none; }
+.compact-stepper::before { left: calc(2px + (100% - 4px) / 3); }
+.compact-stepper::after { left: calc(2px + (100% - 4px) * 2 / 3); }
+.compact-quick-button { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 44px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: var(--primary); font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; transition: background-color 150ms ease, color 150ms ease; }
+.compact-step-sign { font-size: 16px; font-weight: 400; }
+.compact-quick-button:hover:not(:disabled) { background: var(--accent-soft); }
+.compact-quick-button:active:not(:disabled) { background: var(--primary); color: var(--primary-foreground); }
+.compact-quick-button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.compact-quick-button.is-decrement { color: var(--muted); }
+.compact-quick-button.is-decrement:hover:not(:disabled) { color: var(--text); background: var(--surface-soft); }
+.compact-quick-button.is-decrement:active:not(:disabled) { background: var(--border); color: var(--text); }
+.compact-quick-button:disabled { color: var(--muted); opacity: .4; cursor: not-allowed; }
+.compact-quick-button.is-retry { box-shadow: inset 0 0 0 1px var(--danger); }
+.compact-history-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex-shrink: 0; min-width: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 10px; color: var(--muted); background: transparent; }
+.compact-history-button:hover { background: var(--surface-soft); color: var(--text); }
+.compact-history-button.with-label { padding: 0 12px; font-size: 14px; }
+.compact-quick-progress .compact-course-meter-label>span:first-child { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-quick-progress .compact-course-meter-label>span:last-child { flex-shrink: 0; max-width: 60%; }
+.compact-course-meter { min-width: 0; flex: 1; }
+.compact-course-meter-label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 7px; color: var(--muted); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.compact-course-meter-label>span:first-child { flex-shrink: 0; }
+.compact-course-meter-label>span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-course-open { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; flex-shrink: 0; border: 0; border-radius: 10px; padding: 0 12px; background: var(--accent-soft); color: var(--primary); font-size: 14px; font-weight: 600; }
+.compact-course-open:hover { background: var(--line); }
+.compact-task-description { margin-top: 12px; padding: 12px 0 0; border-top: 1px solid var(--border); }
+.compact-task-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; margin-bottom: 10px; font-size: 12px; }
+.compact-task-facts>div { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.compact-task-facts dt { color: var(--muted); }
+.compact-task-facts dd { margin: 0; overflow-wrap: anywhere; }
+.compact-task-description p { overflow-wrap: anywhere; color: var(--muted); font-size: 14px; line-height: 1.65; }
+.compact-task-reward-detail { display: flex; align-items: center; gap: 7px; }
+.compact-task-description p+.compact-task-reward-detail { margin-top: 8px; }
+.compact-task-description button { display: block; min-height: 44px; margin: 0 0 -8px auto; padding: 0 4px; border: 0; color: var(--primary); background: transparent; font-size: 12px; }
+.task-action-menu { z-index: 60; min-width: 176px; padding: 5px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 8px 32px rgb(0 0 0 / 12%); animation: fade-in 120ms ease-out; }
+.task-action-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 12px; border-radius: 7px; font-size: 14px; color: var(--text); cursor: pointer; outline: none; user-select: none; }
+.task-action-item[data-highlighted] { background: var(--surface-soft); }
+.task-action-item[data-disabled] { opacity: .5; cursor: not-allowed; }
+.task-action-delete { color: var(--danger); }
+.task-action-separator { height: 1px; background: var(--border); margin: 4px 7px; }
+@media (max-width: 767px) {
+  .compact-task-card { padding: 13px 12px; }
+  .compact-task-heading { gap: 8px; }
+  .compact-task-icon { width: 32px; height: 34px; }
+  .compact-task-name-row { gap: 6px; }
+  .compact-task-name-row h3 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow-wrap: anywhere; font-size: 15px; line-height: 22px; }
+  .compact-task-actions { margin-right: -6px; }
+  .compact-task-meta { column-gap: 8px; row-gap: 2px; }
+  .compact-course-progress { margin-top: 9px; gap: 12px; }
+  .compact-quick-progress { grid-template-columns: minmax(0,1fr); gap: 8px; margin-top: 10px; }
+  .compact-quick-progress.is-readonly { grid-template-columns: minmax(0,1fr) auto; gap: 12px; }
+  .compact-quick-actions { gap: 8px; }
+  .compact-stepper { flex: 1; }
+  .compact-quick-progress .compact-course-meter-label { margin-bottom: 6px; }
+  .compact-course-open { padding: 0 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .compact-progress-fill, .compact-quick-button { transition: none; }
+}

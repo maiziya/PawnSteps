@@ -1,0 +1,48 @@
+.progress-records-dialog { width: min(620px, calc(100vw - 32px)); }
+.progress-records-dialog .dialog-header h2 { overflow-wrap: anywhere; font-size: 21px; }
+.record-totals { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+.record-totals>span { min-width: 0; color: var(--muted); font-size: 12px; }
+.record-totals strong { display: block; overflow-wrap: anywhere; font-size: 21px; color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.record-totals small { font-size: 13px; font-weight: 400; }
+.record-create-form { display: grid; gap: 13px; }
+.record-create-form label,.record-edit-form label { display: block; min-width: 0; font-size: 13px; }
+.record-create-form label>.field,.record-edit-form label>.field { margin-top: 6px; }
+.record-amount-row { display: flex; align-items: flex-end; gap: 12px; }
+.record-amount-row>label { flex: 1; min-width: 0; }
+.record-amount-row>.btn { flex-shrink: 0; }
+.record-input-unit { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.record-input-unit .field { min-width: 0; }
+.record-input-unit>span { max-width: 35%; overflow-wrap: anywhere; color: var(--muted); font-size: 14px; }
+.record-optional { font-weight: 400; color: var(--muted); }
+.record-error,.record-load-error { color: var(--danger); font-size: 13px; }
+.record-load-error .btn { margin-top: 8px; }
+.record-history { margin-top: 24px; }
+.record-history-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.record-history-heading h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
+.record-history-heading>span { color: var(--muted); font-size: 12px; }
+.record-entry { border-top: 1px solid var(--border); padding: 13px 0 5px; min-width: 0; }
+.record-entry-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.record-entry-heading strong { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; min-width: 0; }
+.record-entry-heading strong>span { font-size: 13px; font-weight: 400; }
+.record-date { flex-shrink: 0; color: var(--muted); font-size: 12px; }
+.record-note { overflow-wrap: anywhere; margin-top: 5px; font-size: 14px; color: var(--muted); }
+.record-entry-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.record-entry-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 7px; border: 0; border-radius: 8px; color: var(--muted); background: transparent; font-size: 12px; }
+.record-entry-actions button:hover { color: var(--primary); background: var(--surface-soft); }
+.record-edit-form { display: grid; grid-template-columns: minmax(80px,1fr) minmax(0,2fr); gap: 12px; margin-top: 10px; }
+.record-edit-form>.record-error,.record-edit-actions { grid-column: 1/-1; }
+.record-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.record-empty,.record-loading { padding: 20px 0; color: var(--muted); font-size: 14px; }
+.record-loading { display: flex; justify-content: center; align-items: center; gap: 8px; }
+.record-load-more { width: 100%; margin-top: 12px; }
+@media (max-width: 767px) {
+  .progress-records-dialog { padding: 23px 18px; }
+  .progress-records-dialog .dialog-header h2 { font-size: 19px; }
+  .record-totals { gap: 12px; }
+  .record-totals strong { font-size: 18px; }
+  .record-amount-row { gap: 8px; }
+  .record-amount-row>.btn { padding: 10px 12px; }
+  .record-input-unit { gap: 6px; }
+  .record-entry-heading { flex-wrap: wrap; gap: 3px 10px; }
+  .record-edit-form { grid-template-columns: 1fr; }
+}
