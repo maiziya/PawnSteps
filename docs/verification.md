@@ -135,3 +135,10 @@
 - Pointer-down is now observed across the course drawer body, including padding gutters and native course checkboxes. Previously the gutter could not start a marquee at all.
 - Chromium and WebKit each passed all 12 course checks, including capture loss, 12 consecutive one-move gestures across checkbox/text/gutter starts, reverse selection, queued saves, rollback, scrolling, and Escape.
 - Optional WebKit regression command (from `frontend`): `npx playwright install webkit`, then `E2E_BASE_URL=http://127.0.0.1:3017 npx playwright test --config playwright.webkit.config.ts`.
+
+## Course daily plans and next-lesson navigation
+
+- Course plans support separate minimum and desired daily lesson quantities, with opt-in editing for legacy courses and an explicit disable switch. Actual course entries determine total size; folder markers are excluded. Existing daily-goal/minimum storage is reused without a new migration.
+- Validated dated achievement, idempotent lesson checking, cross-day reset, historical unchecks, threshold changes, owner isolation, disabling plans, and legacy undated progress: 73 SQLite integration tests passed; 4 PostgreSQL-only tests skipped.
+- Chromium: 3 new course-plan checks and 21 existing calendar, progress and course-interaction checks passed. WebKit: all 15 course-plan/selection checks passed. The 375 × 667 default course creation form fits without internal scrolling.
+- Opening a long course scrolls to its first incomplete lesson. Explicit next-lesson navigation expands the matching group and supports keyboard focus. Checking and marquee selection never trigger automatic navigation; the selection toolbar keeps a stable height when a course completes.

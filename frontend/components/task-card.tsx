@@ -76,7 +76,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords }: TaskCard
               {task.priority === 'high' && <span className="compact-task-priority priority-high" title={priority} aria-label={priority}>优先</span>}
               {reward && <span className="compact-task-reward" title={`关联奖励：${reward.name}`} aria-label={`关联奖励：${reward.name}`}><Gift size={14} aria-hidden="true" /></span>}
             </div>
-            {!isCourse && <div className="compact-task-meta">
+            {(!isCourse || dailyGoal > 0) && <div className="compact-task-meta">
               <span className={task.daily_done || task.is_done ? 'is-complete' : undefined} aria-label={`${task.name}已完成量`} title={`${dailyGoal > 0 ? `每日目标 ${dailyGoal} ${task.unit}，` : ''}${minimumLabel}`}>{restDay || inactivePlan ? minimumLabel : `今日 ${todayAmount}${dailyGoal > 0 ? ` / ${dailyGoal}` : ''} ${task.unit}`}</span>
             </div>}
           </div>
@@ -131,7 +131,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords }: TaskCard
           <dl className="compact-task-facts">
             <div><dt>任务总量</dt><dd>{task.target} {totalUnit}</dd></div>
             <div><dt>累计完成</dt><dd>{task.progress} {totalUnit}</dd></div>
-            {!isCourse && <><div><dt>每日目标量</dt><dd>{dailyGoal > 0 ? `${dailyGoal} ${task.unit}` : '未设置'}</dd></div><div><dt>最小完成量</dt><dd>{dailyMinimum > 0 ? `${dailyMinimum} ${task.unit}` : restDay ? '休息日' : '未设置'}</dd></div></>}
+            {(!isCourse || dailyGoal > 0) && <><div><dt>每日目标量</dt><dd>{dailyGoal > 0 ? `${dailyGoal} ${task.unit}` : '未设置'}</dd></div><div><dt>最小完成量</dt><dd>{dailyMinimum > 0 ? `${dailyMinimum} ${task.unit}` : restDay ? '休息日' : '未设置'}</dd></div></>}
             <div><dt>优先级</dt><dd>{priority}</dd></div>
           </dl>
           {task.description && <p>{task.description}</p>}{reward && <p className="compact-task-reward-detail"><Gift size={15} aria-hidden="true" /><span>关联奖励：{reward.name}</span></p>}

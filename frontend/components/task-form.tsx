@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type InputHTMLAttributes } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { BookOpen, CalendarDays, Check, FileText, Flag, FolderOpen, LoaderCircle, Sun } from 'lucide-react';
+import { BookOpen, CalendarDays, Check, ChevronDown, FileText, Flag, FolderOpen, LoaderCircle, Sun } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,14 +46,14 @@ function localDate(): string {
   return `${parts.find(part => part.type === 'year')?.value}-${parts.find(part => part.type === 'month')?.value}-${parts.find(part => part.type === 'day')?.value}`;
 }
 
-function defaultValues(task?: Task | null): FormValues {
+function defaultValues(task?: Task | null, kind: TaskKind = 'normal'): FormValues {
   return {
     name: task?.name || '',
     description: task?.description || '',
     target: String(task && !task.daily_plan && !task.course_items ? task.target : 10),
     priority: task?.priority || 'medium',
     rewardId: task?.reward_id || '',
-    dailyGoal: String(task?.daily_goal ?? (task?.daily_quota || task?.daily_minimum || 1)),
+    dailyGoal: String(task?.daily_goal ?? (task?.daily_quota || task?.daily_minimum || (kind === 'course' ? Math.min(3, task?.target || 3) : 1))),
     dailyQuota: String(task?.daily_quota || task?.daily_minimum || 1),
     plan: task?.daily_plan?.join(', ') || '10, 10, 0, 10, -1, 10, 5',
     planStartDate: task?.plan_start_date || localDate(),
@@ -64,6 +64,7 @@ function defaultValues(task?: Task | null): FormValues {
 
 export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: { open: boolean; onOpenChange: (open: boolean) => void; task?: Task | null; initialKind?: TaskKind }) {
   const [kind, setKind] = useState<TaskKind>('normal');
+  const [courseDaily, setCourseDaily] = useState(true);
   const [courseItems, setCourseItems] = useState<CourseItem[]>([]);
   const [importName, setImportName] = useState('');
   const [importError, setImportError] = useState('');
@@ -73,7 +74,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   const rewards = useAppStore(state => state.rewards);
   const busy = useAppStore(state => state.busy);
   const mutate = useAppStore(state => state.mutate);
-  const { register, handleSubmit, reset, setError, watch, setValue, getValues, getFieldState, formState: { errors, isSubmitting } } = useForm<FormValues>({ resolver: zodResolver(formSchema), defaultValues: defaultValues(task) });
+  const { register, handleSubmit, reset, setError, clearErrors, watch, setValue, getValues, getFieldState, formState: { errors, isSubmitting } } = useForm<FormValues>({ resolver: zodResolver(formSchema), defaultValues: defaultValues(task) });
   const selectedUnit = watch('unit');
   const minimum = watch('dailyQuota');
   useEffect(() => {
@@ -84,12 +85,23 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
 
   useEffect(() => {
     if (!open) return;
-    reset(defaultValues(task));
-    setKind(task?.course_items ? 'course' : task?.daily_plan ? 'plan' : task && task.daily_quota > 0 ? 'daily' : task ? 'normal' : initialKind);
+    const nextKind = task?.course_items ? 'course' : task?.daily_plan ? 'plan' : task && task.daily_quota > 0 ? 'daily' : task ? 'normal' : initialKind;
+    reset(defaultValues(task, nextKind));
+    setKind(nextKind);
+    setCourseDaily(!task || task.daily_minimum > 0 || task.daily_goal !== null);
     setCourseItems(task?.course_items || []);
     setImportName('');
     setImportError('');
   }, [open, task, reset, initialKind]);
+
+  function updateCourseImport(items: CourseItem[], name: string) {
+    setCourseItems(items);
+    setImportName(name);
+    if (!getFieldState('dailyGoal').isDirty) {
+      const count = items.filter(item => !item.name.endsWith('/')).length;
+      setValue('dailyGoal', String(Math.min(count, Math.max(3, Number(getValues('dailyQuota')) || 1))));
+    }
+  }
 
   async function importText(file?: File) {
     if (!file) return;
@@ -101,8 +113,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
       if (!items.some(item => !item.name.endsWith('/'))) throw new Error('没有找到课程条目。请使用 - 条目 或 * 条目，每行一个。');
       if (items.length > 10000) throw new Error('最多导入 10000 个条目');
       if (items.some(item => item.name.length > 500)) throw new Error('单个条目名称不能超过 500 个字');
-      setCourseItems(items);
-      setImportName(file.name);
+      updateCourseImport(items, file.name);
     } catch (error) { setImportError(error instanceof Error ? error.message : '文件读取失败，请重试'); }
     finally { setImporting(false); }
   }
@@ -112,17 +123,21 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
     const items = parseCourseDirectory(files);
     if (!items.some(item => !item.name.endsWith('/'))) { setImportError('这个文件夹没有可导入的文件'); return; }
     if (items.length > 10000 || items.some(item => item.name.length > 500)) { setImportError('最多 10000 个条目，单个条目名称最多 500 个字'); return; }
-    setCourseItems(items);
-    setImportName(files[0].webkitRelativePath.split('/')[0] || '已选文件夹');
+    updateCourseImport(items, files[0].webkitRelativePath.split('/')[0] || '已选文件夹');
     setImportError('');
   }
 
   async function submit(values: FormValues) {
     const unit = kind === 'course' ? '节' : values.unit === 'custom' ? values.customUnit.trim() : values.unit;
     if (!unit) { setError('customUnit', { message: '请输入计量单位' }); return; }
-    if ((kind === 'normal' || kind === 'daily') && Number(values.dailyGoal) < Number(values.dailyQuota)) { setError('dailyGoal', { message: '每日目标量不能小于最小完成量' }); return; }
+    if ((kind === 'normal' || kind === 'daily' || (kind === 'course' && courseDaily)) && Number(values.dailyGoal) < Number(values.dailyQuota)) { setError('dailyGoal', { message: '每日目标量不能小于最小完成量' }); return; }
     if (kind === 'normal' && Number(values.dailyGoal) > Number(values.target)) { setError('dailyGoal', { message: '每日目标量不能超过任务总量' }); return; }
     if (kind === 'normal' && Number(values.dailyQuota) > Number(values.target)) { setError('dailyQuota', { message: '最小完成量不能超过目标任务总量' }); return; }
+    if (kind === 'course') {
+      if (!courseCount) { setImportError('请先导入一份课程清单或文件夹'); return; }
+      if (courseDaily && Number(values.dailyQuota) > courseCount) { setError('dailyQuota', { message: '最小完成量不能超过课程节数' }); return; }
+      if (courseDaily && Number(values.dailyGoal) > courseCount) { setError('dailyGoal', { message: '每日目标量不能超过课程节数' }); return; }
+    }
     const payload: Record<string, unknown> = {
       name: values.name,
       description: values.description,
@@ -136,6 +151,10 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
     }
     if (kind === 'daily') payload.daily_quota = Number(values.dailyQuota);
     if (kind === 'normal') payload.daily_minimum = Number(values.dailyQuota);
+    if (kind === 'course') {
+      payload.daily_minimum = courseDaily ? Number(values.dailyQuota) : 0;
+      payload.daily_goal = courseDaily ? Number(values.dailyGoal) : null;
+    }
     if (!task && kind === 'plan') {
       let plan: unknown;
       try { plan = values.plan.trim().startsWith('[') ? JSON.parse(values.plan) : values.plan.split(/[,，\s]+/).filter(Boolean).map(Number); }
@@ -161,6 +180,19 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   const pending = Boolean(busy) || isSubmitting || importing;
   const directoryAttributes = { webkitdirectory: '', directory: '' } as InputHTMLAttributes<HTMLInputElement>;
 
+  const additionalFields = <>
+          <div className="task-settings-grid">
+            <div className="space-y-1.5"><label htmlFor="task-priority" className="text-sm font-medium">优先级</label><select id="task-priority" className="field w-full" {...register('priority')}><option value="high">高 · 优先投入</option><option value="medium">中 · 稳步推进</option><option value="low">低 · 从容安排</option></select></div>
+            <div className="space-y-1.5"><label htmlFor="task-reward" className="text-sm font-medium">完成后的奖励</label><select id="task-reward" className="field w-full" {...register('rewardId')}><option value="">暂不关联奖励</option>{rewards.filter(reward => reward.streak_target === null).map(reward => <option key={reward.id} value={reward.id}>{reward.name}{reward.is_unlocked ? '（已解锁）' : ''}</option>)}</select></div>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="task-description" className="text-sm font-medium">补充说明 <span className="font-normal text-[var(--muted)]">可选</span></label>
+            <textarea id="task-description" className="field task-description" rows={1} placeholder="添加备注（可选）" maxLength={200} {...register('description')} />
+            {errors.description && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.description.message}</p>}
+          </div>
+
+  </>;
+
   return (
     <Dialog open={open} onOpenChange={next => { if (!pending) onOpenChange(next); }}>
       <DialogContent className="task-form-dialog">
@@ -170,7 +202,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
         </DialogHeader>
         <form onSubmit={handleSubmit(submit)} className="task-form-fields">
           {!task && <div className="task-kind-options" role="group" aria-label="任务类型">
-            {taskKinds.map(item => <button key={item.value} type="button" aria-pressed={kind === item.value} onClick={() => setKind(item.value)} className={`task-kind-option ${kind === item.value ? 'is-selected' : ''}`}>
+            {taskKinds.map(item => <button key={item.value} type="button" aria-pressed={kind === item.value} onClick={() => { setKind(item.value); if (item.value === 'course' && !getFieldState('dailyGoal').isDirty) setValue('dailyGoal', String(Math.min(courseCount || 3, Math.max(3, Number(getValues('dailyQuota')) || 1)))); }} className={`task-kind-option ${kind === item.value ? 'is-selected' : ''}`}>
               <item.icon size={17} aria-hidden="true" /><span>{item.label}</span>
             </button>)}
           </div>}
@@ -203,16 +235,14 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
             <p className="text-xs text-[var(--muted)]">文件夹仅读取文件名，不上传文件内容。</p>
           </div>)}
 
-          <div className="task-settings-grid">
-            <div className="space-y-1.5"><label htmlFor="task-priority" className="text-sm font-medium">优先级</label><select id="task-priority" className="field w-full" {...register('priority')}><option value="high">高 · 优先投入</option><option value="medium">中 · 稳步推进</option><option value="low">低 · 从容安排</option></select></div>
-            <div className="space-y-1.5"><label htmlFor="task-reward" className="text-sm font-medium">完成后的奖励</label><select id="task-reward" className="field w-full" {...register('rewardId')}><option value="">暂不关联奖励</option>{rewards.filter(reward => reward.streak_target === null).map(reward => <option key={reward.id} value={reward.id}>{reward.name}{reward.is_unlocked ? '（已解锁）' : ''}</option>)}</select></div>
-          </div>
-          <div className="space-y-1.5">
-            <label htmlFor="task-description" className="text-sm font-medium">补充说明 <span className="font-normal text-[var(--muted)]">可选</span></label>
-            <textarea id="task-description" className="field task-description" rows={1} placeholder="添加备注（可选）" maxLength={200} {...register('description')} />
-            {errors.description && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.description.message}</p>}
-          </div>
-
+          {kind === 'course' && <div className="task-course-daily">
+            <label className="task-course-daily-toggle"><input type="checkbox" checked={courseDaily} onChange={event => { const enabled = event.target.checked; setCourseDaily(enabled); if (!enabled) { clearErrors(['dailyQuota', 'dailyGoal']); for (const field of ['dailyQuota', 'dailyGoal'] as const) { const value = getValues(field); if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 10000) setValue(field, '1'); } } }} />每日学习计划</label>
+            {courseDaily && <div className="task-settings-grid">
+              <div className="space-y-1.5"><label htmlFor="course-minimum">最小完成量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-minimum" aria-label="最小完成量" type="number" min={1} max={courseCount || 10000} {...register('dailyQuota')} />{errors.dailyQuota && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyQuota.message}</p>}</div>
+              <div className="space-y-1.5"><label htmlFor="course-goal">每日目标量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-goal" aria-label="每日目标量" type="number" min={1} max={courseCount || 10000} {...register('dailyGoal')} />{errors.dailyGoal && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyGoal.message}</p>}</div>
+            </div>}
+          </div>}
+          {kind === 'course' ? <details className="task-course-options"><summary>优先级、奖励与备注<ChevronDown size={16} /></summary><div className="task-form-fields">{additionalFields}</div></details> : additionalFields}
           <div className="task-form-footer"><Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>取消</Button><Button type="submit" disabled={pending}>{pending && <LoaderCircle size={16} className="animate-spin" />}{task ? '保存调整' : '创建任务'}</Button></div>
         </form>
       </DialogContent>

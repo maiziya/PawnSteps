@@ -180,3 +180,6 @@ html { scroll-padding-top: 124px; }
   .onboarding-option { min-height: 78px; gap: 12px; padding: 13px 4px; }
   .onboarding-option small { font-size: 12px; }
 }
+
+.course-daily-summary { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.course-daily-summary.is-met { color: var(--success); }

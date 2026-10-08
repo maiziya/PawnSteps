@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown, Folder, SquareCheck } from 'lucide-react';
 import type { CourseItem, Task } from '@/lib/types';
 import { displayCourseItemName, groupCourseItems } from '@/lib/course';
@@ -38,6 +38,8 @@ export function CourseItems({ task }: { task: Task }) {
   const groups = useMemo(() => groupCourseItems(items), [items]);
   const firstIncomplete = groups.find(group => group.indices.some(index => !items[index].done))?.id || groups[0]?.id;
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(firstIncomplete ? [firstIncomplete] : []));
+  const nextIndex = items.findIndex(item => !item.name.endsWith('/') && !item.done);
+  const [navigation, setNavigation] = useState<{ index: number; focus: boolean } | null>(() => nextIndex < 0 ? null : { index: nextIndex, focus: false });
   const [selection, setSelection] = useState<SelectionRect | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [forceClear, setForceClear] = useState(false);
@@ -50,6 +52,29 @@ export function CourseItems({ task }: { task: Task }) {
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const mutate = useAppStore(state => state.mutate);
+
+  useLayoutEffect(() => {
+    if (!navigation || !root.current) return;
+    const scroller = root.current.closest<HTMLElement>('.course-drawer-body');
+    const item = root.current.querySelector<HTMLElement>(`[data-course-item="${navigation.index}"]`);
+    if (!scroller || !item) return;
+    const viewport = scroller.getBoundingClientRect();
+    const bounds = item.getBoundingClientRect();
+    if (bounds.top < viewport.top + 8 || bounds.bottom > viewport.bottom - 8) {
+      scroller.scrollTop += bounds.top - viewport.top - Math.min(48, viewport.height / 4);
+    }
+    if (navigation.focus) item.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
+    setNavigation(null);
+  }, [navigation, expanded]);
+
+  function locateNext(focus: boolean) {
+    const index = itemsRef.current.findIndex(item => !item.name.endsWith('/') && !item.done);
+    if (index < 0) return;
+    const group = groupCourseItems(itemsRef.current).find(item => item.indices.includes(index));
+    if (!group) return;
+    setExpanded(current => new Set([...current, group.id]));
+    setNavigation({ index, focus });
+  }
 
   async function setItems(indices: number[], done: boolean) {
     const eligible = [...new Set(indices)].filter(index => itemsRef.current[index] && !itemsRef.current[index].name.endsWith('/'));
@@ -232,7 +257,7 @@ export function CourseItems({ task }: { task: Task }) {
       if (suppressClick.current && event.detail !== 0) { suppressClick.current = false; event.preventDefault(); event.stopPropagation(); }
     }}>
       <div className="course-selection-help">
-        <span><SquareCheck size={14} />按章节，慢慢完成</span>
+        <span>{nextIndex >= 0 ? <button type="button" className="course-locate-next" aria-label="定位下一节" title={`下一节：${displayCourseItemName(items[nextIndex].name)}`} onClick={event => locateNext(event.detail === 0)}><ChevronDown size={14} />定位下一节</button> : <><SquareCheck size={14} />课程已完成</>}</span>
         <span className="course-mouse-hint">拖动框选 · Shift + 框选取消</span>
       </div>
       <p className="sr-only" aria-live="polite">{selection && selected.size ? `松开将${selectionCompletes ? '完成' : '取消完成'} ${selected.size} 项` : ''}</p>
