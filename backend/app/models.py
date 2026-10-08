@@ -80,8 +80,24 @@ class Task(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     undo_token: Mapped[str | None] = mapped_column(String(128), unique=True)
     undo_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    schedules: Mapped[list['TaskSchedule']] = relationship(back_populates='task', cascade='all, delete-orphan', lazy='selectin')
     history: Mapped[list['DailyHistory']] = relationship(back_populates='task', cascade='all, delete-orphan', lazy='selectin')
     records: Mapped[list['ProgressRecord']] = relationship(back_populates='task', cascade='all, delete-orphan')
+
+
+class TaskSchedule(Base):
+    __tablename__ = 'task_schedules'
+    __table_args__ = (
+        CheckConstraint("mode IN ('daily', 'weekdays', 'weekly')", name='ck_schedule_mode'),
+        CheckConstraint('weekly_target IS NULL OR (weekly_target >= 1 AND weekly_target <= 7)', name='ck_schedule_weekly_target'),
+    )
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('tasks.id', ondelete='CASCADE'), primary_key=True)
+    starts_on: Mapped[DateValue] = mapped_column(Date, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    mode: Mapped[str] = mapped_column(String(16))
+    weekdays: Mapped[list[int]] = mapped_column(JSON().with_variant(JSONB, 'postgresql'), default=list)
+    weekly_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    task: Mapped['Task'] = relationship(back_populates='schedules')
 
 
 class DailyHistory(Base):

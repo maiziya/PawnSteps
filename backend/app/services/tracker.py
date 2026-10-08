@@ -15,8 +15,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import DailyHistory, Owner, ProgressAdjustment, ProgressRecord, Reward, Task
-from app.schemas import CourseUpdate, ProgressRecordCreate, ProgressRecordOut, ProgressRecordPatch, RewardCreate, RewardOut, RewardPatch, TaskCreate, TaskOut, TaskPatch
+from app.models import DailyHistory, Owner, ProgressAdjustment, ProgressRecord, Reward, Task, TaskSchedule
+from app.schemas import CourseUpdate, ProgressRecordCreate, ProgressRecordOut, ProgressRecordPatch, RewardCreate, RewardOut, RewardPatch, ScheduleConfig, TaskCreate, TaskOut, TaskPatch
+
+
+from app.services import schedules
 
 
 MILESTONES = (3, 7, 14, 30, 60, 100)
@@ -217,14 +220,8 @@ async def _cleanup(session: AsyncSession, owner_id: str) -> None:
     await session.flush()
 
 
-async def _streak(session: AsyncSession, owner_id: str) -> int:
-    days = set((await session.scalars(select(DailyHistory.date).join(Task).where(Task.owner_id == owner_id, Task.deleted_at.is_(None), DailyHistory.completed.is_(True), DailyHistory.date <= today()).distinct())).all())
-    count = 0
-    day = today()
-    while day in days:
-        count += 1
-        day -= timedelta(days=1)
-    return count
+async def _streak(session: AsyncSession, owner_id: str, tasks: list[Task] | None = None) -> int:
+    return schedules.streak(tasks if tasks is not None else await _tasks(session, owner_id), today())
 
 
 async def snapshot(session: AsyncSession, owner_id: str) -> dict:
@@ -235,6 +232,7 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
     amounts, counts = await _record_totals(session, tasks)
     for task in tasks:
         _refresh_task(task, day, amounts.get(task.id, {}), counts.get(task.id, 0))
+        schedules.project(task, day)
     rewards = list((await session.scalars(select(Reward).where(Reward.owner_id == owner_id).order_by(Reward.position, Reward.id))).all())
     existing = {reward.streak_target for reward in rewards if reward.streak_target}
     last_position = max((reward.position for reward in rewards), default=-1)
@@ -245,7 +243,7 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
             session.add(reward)
             rewards.append(reward)
     await session.flush()
-    streak = await _streak(session, owner_id)
+    streak = await _streak(session, owner_id, tasks)
     unlocked = None
     reward_map = {reward.id: reward for reward in rewards}
     for task in tasks:
@@ -262,7 +260,7 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
             unlocked = reward
     await session.flush()
     completed = sum(task.is_done for task in tasks)
-    daily_tasks = [task for task in tasks if (task.daily_quota > 0 or task.daily_minimum > 0 or task.daily_plan is not None) and (not task.is_done or task.daily_done) and (task.plan_start_date is None or task.plan_start_date <= day)]
+    daily_tasks = [task for task in tasks if (task.daily_quota > 0 or task.daily_minimum > 0 or task.daily_plan is not None) and (task.is_scheduled_today or task.daily_done) and (not task.is_done or task.daily_done) and (task.plan_start_date is None or task.plan_start_date <= day)]
     return {
         'today': day,
         'timezone': settings.timezone,
@@ -293,6 +291,7 @@ async def create_task(session: AsyncSession, owner_id: str, body: TaskCreate) ->
     if body.reward_id:
         await get_reward(session, owner_id, body.reward_id)
     values = body.model_dump()
+    schedule = values.pop('schedule')
     if body.daily_plan is not None:
         values['target'] = sum(max(0, item) for item in body.daily_plan)
         values['plan_start_date'] = body.plan_start_date or today()
@@ -300,7 +299,7 @@ async def create_task(session: AsyncSession, owner_id: str, body: TaskCreate) ->
         values['course_items'] = [{'name': item.name, 'done': False} for item in body.course_items]
         values['target'] = sum(not item.name.endswith('/') for item in body.course_items)
         values['unit'] = '节'
-    task = Task(**values, owner_id=owner_id, position=max((item.position for item in tasks), default=-1) + 1, progress=0, daily_date=today(), history=[])
+    task = Task(**values, owner_id=owner_id, position=max((item.position for item in tasks), default=-1) + 1, progress=0, daily_date=today(), history=[], schedules=[TaskSchedule(starts_on=today(), enabled=bool(body.daily_quota or body.daily_minimum or body.daily_plan is not None), **schedule)])
     session.add(task)
     await session.flush()
     return await snapshot(session, owner_id)
@@ -313,6 +312,7 @@ async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body:
     for key, value in values.items():
         if value is None and key != 'reward_id' and not (key == 'daily_goal' and task.course_items is not None):
             raise HTTPException(422, f'{key} cannot be null')
+    requested_schedule = values.pop('schedule', None)
     if 'name' in values:
         await _unique_name(session, owner_id, values['name'], task.id)
     if values.get('reward_id'):
@@ -336,6 +336,11 @@ async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body:
             raise HTTPException(422, 'Daily goal cannot be lower than the daily minimum')
         if not task.daily_quota and daily_goal > values.get('target', task.target):
             raise HTTPException(422, 'Daily goal cannot exceed the total target')
+    config = ScheduleConfig.model_validate(requested_schedule) if requested_schedule is not None else schedules.configuration(task, today())[0]
+    enabled = bool(values.get('daily_quota', task.daily_quota) or values.get('daily_minimum', task.daily_minimum) or task.daily_plan is not None)
+    if config.mode != 'daily' and (not enabled or task.daily_plan is not None):
+        raise HTTPException(422, 'Flexible schedules require a minimum and cannot override a day-by-day plan')
+    schedules.set_schedule(task, today(), config, enabled)
     for key, value in values.items():
         setattr(task, key, value)
     if 'daily_minimum' in values:
@@ -616,4 +621,9 @@ async def history(session: AsyncSession, owner_id: str, month: str | None = None
                 'amount': totals.get(day, 0), 'unit': '节' if kind == 'course' else task.unit,
                 'task_kind': kind, 'quota': row.quota if row else None})
     entries.sort(key=lambda entry: (-entry['date'].toordinal(), entry['task_name']))
-    return {'history': entries, 'streak': await _streak(session, owner_id)}
+    rest_dates = []
+    if month:
+        end = first.replace(day=calendar.monthrange(first.year, first.month)[1])
+        rest_dates = [first + timedelta(days=index) for index in range((end - first).days + 1)
+                      if schedules.rest_day(tasks, first + timedelta(days=index))]
+    return {'history': entries, 'rest_dates': rest_dates, 'streak': await _streak(session, owner_id, tasks)}

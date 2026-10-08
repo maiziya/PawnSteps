@@ -1,5 +1,5 @@
 from datetime import date, datetime, timezone
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -18,7 +18,29 @@ class CourseItem(BaseModel):
         return value.strip()
 
 
+class ScheduleConfig(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    mode: Literal['daily', 'weekdays', 'weekly'] = 'daily'
+    weekdays: list[Annotated[int, Field(ge=0, le=6, strict=True)]] = Field(default_factory=list, max_length=7)
+    weekly_target: int | None = Field(default=None, ge=1, le=7, strict=True)
+
+    @model_validator(mode='after')
+    def validate_schedule(self) -> 'ScheduleConfig':
+        if self.mode == 'weekdays':
+            if not self.weekdays or len(set(self.weekdays)) != len(self.weekdays):
+                raise ValueError('Choose at least one unique weekday')
+            self.weekdays = sorted(self.weekdays)
+        elif self.weekdays:
+            raise ValueError('Weekdays are only used with the weekdays schedule')
+        if self.mode == 'weekly' and self.weekly_target is None:
+            raise ValueError('A weekly schedule needs a target from 1 to 7')
+        if self.mode != 'weekly' and self.weekly_target is not None:
+            raise ValueError('Weekly target is only used with the weekly schedule')
+        return self
+
+
 class TaskCreate(BaseModel):
+    schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(default='', max_length=200)
     unit: str = Field(default='步', min_length=1, max_length=12)
@@ -41,6 +63,8 @@ class TaskCreate(BaseModel):
 
     @model_validator(mode='after')
     def check_type(self) -> 'TaskCreate':
+        if self.schedule.mode != 'daily' and (self.daily_plan is not None or not (self.daily_quota or self.daily_minimum)):
+            raise ValueError('Flexible schedules require a daily minimum and cannot override a day-by-day plan')
         effective_target = sum(not item.name.endswith('/') for item in self.course_items) if self.course_items is not None else self.target
         if self.daily_goal is not None:
             if self.daily_plan is not None:
@@ -66,6 +90,7 @@ class TaskCreate(BaseModel):
 
 
 class TaskPatch(BaseModel):
+    schedule: ScheduleConfig | None = None
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=200)
     unit: str | None = Field(default=None, min_length=1, max_length=12)
@@ -207,6 +232,10 @@ class TaskOut(BaseModel):
     today_amount: int
     record_count: int
     plan_expired: bool
+    schedule: ScheduleConfig
+    is_scheduled_today: bool
+    weekly_completed: int
+    weekly_target: int | None
     is_done: bool
     done_at: datetime | None
     priority: str
@@ -270,5 +299,6 @@ class HistoryEntry(BaseModel):
 
 
 class HistoryResponse(BaseModel):
+    rest_dates: list[date] = Field(default_factory=list)
     history: list[HistoryEntry]
     streak: int
