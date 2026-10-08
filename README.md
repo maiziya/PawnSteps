@@ -1,0 +1,153 @@
+# PawnSteps · 日拱一卒
+
+习惯养成与目标追踪应用。前后端独立，提供 FastAPI REST API、Next.js 15 页面、浅色/暗色主题和 Docker Compose 部署。
+
+## 本地运行
+
+需要 Python 3.12、Node.js 22。下列命令从仓库根目录开始执行。
+
+```bash
+uv venv --python 3.12 .venv
+uv pip install --python .venv/bin/python -r backend/requirements.lock
+cp .env.example backend/.env
+cd backend
+../.venv/bin/alembic upgrade head
+../.venv/bin/uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+另开一个终端：
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+打开 <http://localhost:3000>，API 文档为 <http://localhost:8000/api/docs>。游客无需注册即可使用。开发数据库为 `backend/pawnsteps.db`，图片位于 `backend/uploads/`。如果没有 uv，也可使用 `python3.12 -m venv .venv` 和 `.venv/bin/pip install -r backend/requirements.lock`。
+
+前端代理地址由启动或构建时的 `API_BASE_URL` 控制，默认 `http://127.0.0.1:8000`；API 密钥不会进入浏览器。修改独立部署的代理目标后需要重新构建 Next.js。
+
+## 已实现
+
+| 功能 | 行为 |
+| --- | --- |
+| 普通任务 | 1–100 步、优先级、描述、关联奖励；加减、点击或拖动进度条；未完成任务拖拽排序、已完成沉底 |
+| 每日任务 | 独立每日配额、跨天重置、同日幂等累计、撤销当日达标 |
+| 天数计划 | 正配额累计，0/-1 自动休息日，按开始日期选择配额，计划结束自动完成 |
+| 课程学习 | TXT/Markdown 大纲、文件夹文件名导入；文件夹分组或 25 项分组；折叠、单选/全选、桌面鼠标框选 |
+| 删除恢复 | 服务端验证的 5 秒撤销令牌，绑定当前 owner |
+| 奖励 | 图片、增删改、手动锁定/解锁、拖拽排序；完成任务自动解锁；弹窗动效 |
+| 连续打卡 | 3/7/14/30/60/100 天里程碑；数据库唯一约束避免重复创建；禁止删除 |
+| 日历 | 月历/列表切换、月份导航、每日完成任务详情 |
+| 声音 | Web Audio 合成步进、任务完成、每日达标、奖励解锁四种声音；静音持久化 |
+| 认证 | 密码、邮箱验证码、微信网站扫码；游客任务限制与注册/登录迁移 |
+| 个人中心 | 头像、用户名、统计、修改/设置密码、JSON 数据导出 |
+| 管理后台 | `/admin` 独立登录、用户搜索/分页、用户任务/奖励查看及导出 |
+| 统计 | 全部/完成/进行中常驻统计；XP = 完成任务数 × 100 |
+
+游客最多 10 个任务，其中每日或计划任务最多 3 个。所有业务数据均按 `owner_id` 隔离。日期按服务端 `TIMEZONE`（默认 `Asia/Shanghai`），API 返回 `today`、`timezone` 供前端同步，避免客户端与服务器跨天不一致。
+
+课程文件夹导入只读取文件路径和名称，不上传课程文件内容。图片上传支持 PNG/JPEG/WebP，最大 5 MB，服务端重新解码编码并限制像素尺寸。
+
+## 邮箱、微信与图片存储
+
+这些接口包含完整的服务端流程，真实调用需要提供相应服务凭据。
+
+- **邮箱**：配置 `SMTP_HOST/PORT/USERNAME/PASSWORD/FROM`；生产要求 STARTTLS。开发时可显式设置 `SMTP_ALLOW_CONSOLE=true`，验证码只输出到本地后端日志。注册时邮箱可留空；填写邮箱则必须输入验证码。验证码有效期 10 分钟，最多 5 次尝试，使用后失效。
+- **微信**：使用微信开放平台已审核的网站应用；配置 `WECHAT_APP_ID`、`WECHAT_APP_SECRET` 和 `WECHAT_REDIRECT_URI=https://你的域名/api/auth/wechat/callback`。回调与前端应使用同一公网域名。按钮打开微信官方二维码登录页面；浏览器绑定的 state 和短效一次性 ticket 完成授权。
+- **S3**：设置 `STORAGE_BACKEND=s3`、`S3_BUCKET`、`S3_REGION`、`S3_PUBLIC_BASE_URL`，并配置 IAM 角色或 `S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY`。兼容存储可设置 `S3_ENDPOINT_URL`。公开图片使用专用 CDN 或静态资源域名；后端不返回存储凭据。
+
+## Docker Compose
+
+```bash
+cp .env.example .env
+```
+
+修改 `.env` 中的 `JWT_SECRET` 和 `POSTGRES_PASSWORD`。可用 `openssl rand -hex 48` 与 `openssl rand -hex 24` 分别生成；数据库密码需为 URL 安全字符。
+
+```bash
+docker compose up -d --build
+docker compose ps
+curl http://localhost:8080/api/health
+```
+
+默认仅绑定本机 `127.0.0.1:8080`。服务顺序为 PostgreSQL 健康检查 → Alembic 一次性迁移 → FastAPI → Next.js standalone → Nginx；数据库和上传文件分别持久化到卷。生产镜像以非 root 用户运行应用进程。
+
+生产还需设置：
+
+```dotenv
+ENVIRONMENT=production
+FRONTEND_URL=https://pawnsteps.example.com
+PUBLIC_BASE_URL=https://pawnsteps.example.com
+CORS_ORIGINS=["https://pawnsteps.example.com"]
+ALLOWED_HOSTS=["pawnsteps.example.com","localhost","127.0.0.1","backend"]
+WECHAT_REDIRECT_URI=https://pawnsteps.example.com/api/auth/wechat/callback
+```
+
+由已有的 HTTPS 入口将该域名转发至 `127.0.0.1:8080`；也可使用下方 Nginx TLS 覆盖配置。生产启动会拒绝示例 JWT 密钥、通配允许域名及 HTTP 前端地址。生产关闭 Swagger/OpenAPI 公共文档。
+
+```bash
+# TLS_CERT_DIR contains fullchain.pem and privkey.pem for the public domain.
+TLS_CERT_DIR=/absolute/path/to/certificates docker compose -f compose.yaml -f compose.tls.yaml up -d --build
+```
+
+TLS 覆盖配置需 Docker Compose 2.24.4 或更新版本，监听公网 80/443。证书签发及续期由部署方的证书服务管理。若自定义环境文件，可设置 `PAWNSTEPS_ENV_FILE=/absolute/path/app.env`，同时传入 `docker compose --env-file /absolute/path/app.env`。
+
+创建独立管理员：
+
+```bash
+# Configure ADMIN_USERNAME, ADMIN_PASSWORD and optional ADMIN_EMAIL in .env first.
+docker compose exec backend python -m app.cli create-admin
+```
+
+本地开发对应命令为 `cd backend && ../.venv/bin/python -m app.cli create-admin`。没有预置管理员密码；引导命令不会把普通用户提升为管理员，也不会重置已有管理员密码。
+
+更新版本前先备份数据库与上传卷，再执行 `docker compose up -d --build`。可使用 `docker compose exec -T database pg_dump -U pawnsteps pawnsteps > backup.sql` 备份数据库。不要对需要保留的数据执行 `docker compose down -v`。
+
+## 验证
+
+```bash
+uv pip install --python .venv/bin/python -r backend/requirements-dev.txt
+cd backend
+../.venv/bin/pytest -q
+../.venv/bin/alembic check
+```
+
+SQLite 测试自动使用独立内存库。设置 `TEST_DATABASE_URL=postgresql+asyncpg://...` 可运行 PostgreSQL 并发用例；**只能使用可销毁的专用测试数据库**，测试 fixture 会创建并删除表。
+
+```bash
+cd frontend
+npm run typecheck
+npm run build
+npm audit
+npx playwright install chromium
+```
+
+端到端测试连接真实 API。后端启动在 8017，前端以 `API_BASE_URL=http://127.0.0.1:8017 npm run dev -- --port 3017` 启动，然后执行 `npm run test:e2e`。也可通过 `E2E_BASE_URL` 指向其他专用测试环境。管理员用例需设置 `E2E_ADMIN_USERNAME` 和 `E2E_ADMIN_PASSWORD`；测试生成的数据只用于独立随机游客或测试账号。测试报告见 `frontend/playwright-report/`。
+
+后端依赖已在 `requirements.lock` 固定，前端由 `package-lock.json` 固定。升级后运行数据库与浏览器测试。当前保留的 python-jose/ecdsa 审计项适用范围和 HS256 限定见 [安全说明](docs/security.md)。Next.js 使用 15.5.27，并对 PostCSS 依赖应用补丁覆盖，参考 [Next.js 官方安全公告](https://nextjs.org/blog/september-2026-security-release)。
+
+## 代码导航
+
+```text
+backend/
+  app/models.py             SQLAlchemy models and constraints
+  app/schemas.py            Public tracking contracts
+  app/auth.py               JWT and owner dependencies
+  app/services/             Business transactions, accounts, storage
+  app/routers/              Validated HTTP entry points
+  alembic/                  Versioned migrations
+  tests/                    HTTP integration and concurrency regressions
+frontend/
+  app/                      App Router pages and global tokens
+  components/               Dashboard, tasks, courses, rewards, calendar, account
+  components/ui/            shadcn-compatible Radix primitives
+  lib/                      API, Zustand state, audio, course parsing
+  tests/                    Browser acceptance tests
+deploy/                     Nginx reverse proxy and TLS configuration
+design-system/pawnsteps/    ui-ux-pro-max output and application override
+```
+
+[API 契约](docs/api.md) · [业务与架构约定](docs/architecture.md) · [安全说明](docs/security.md) · [验收记录](docs/verification.md)
+
+`is_premium` 按需求预留，当前不包含支付收款、订阅计费、退款或发票。接入真实 SMTP、微信、S3、域名和证书后可部署这些已实现的功能；收费还需确定支付渠道和订阅规则。

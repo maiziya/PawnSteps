@@ -1,0 +1,77 @@
+name: Verify PawnSteps
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pawnsteps
+          POSTGRES_PASSWORD: ci-only-database-password
+          POSTGRES_DB: pawnsteps_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pawnsteps -d pawnsteps_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      JWT_SECRET: ci-only-random-looking-secret-not-for-production-usage
+      ADMIN_USERNAME: ci_pawnsteps_admin
+      ADMIN_PASSWORD: ci-only-password-for-browser-tests-2026
+      ADMIN_EMAIL: ci-admin@example.com
+      API_BASE_URL: http://127.0.0.1:8017
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -r backend/requirements.lock -r backend/requirements-dev.txt
+      - name: SQLite regressions
+        working-directory: backend
+        run: pytest -q
+      - name: PostgreSQL regressions
+        working-directory: backend
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://pawnsteps:ci-only-database-password@127.0.0.1:5432/pawnsteps_test
+        run: pytest -q
+      - name: Verify migrations
+        working-directory: backend
+        run: |
+          alembic upgrade head
+          alembic check
+          python -m app.cli create-admin
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run typecheck && npm run build && npm audit --audit-level=high
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Start acceptance environment
+        run: |
+          (cd backend && uvicorn app.main:app --host 127.0.0.1 --port 8017 > /tmp/pawnsteps-api.log 2>&1) &
+          (cd frontend && npm run start -- --port 3017 > /tmp/pawnsteps-web.log 2>&1) &
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3017/api/health; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Browser acceptance
+        working-directory: frontend
+        env:
+          E2E_ADMIN_USERNAME: ci_pawnsteps_admin
+          E2E_ADMIN_PASSWORD: ci-only-password-for-browser-tests-2026
+        run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-report
+          path: frontend/playwright-report/

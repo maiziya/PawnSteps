@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.db
+*.db-*
+.env
+.env.local
+node_modules/
+.next/
+uploads/
+test-results/
+playwright-report/
+.DS_Store
+*.tsbuildinfo
