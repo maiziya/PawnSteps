@@ -116,27 +116,35 @@ def _course_day_amounts(task: Task) -> dict[date, int]:
     return amounts
 
 
+def _refresh_minimum(task: Task, day: date, amounts: dict[date | None, int]) -> None:
+    """Track daily achievement separately from quantity or course completion."""
+    task.today_amount = amounts.get(day, 0)
+    task.daily_date = day
+    task.daily_progress = min(task.today_amount, task.daily_minimum)
+    if task.daily_minimum > 0 and task.today_amount > 0:
+        _history_row(task, day, task.daily_minimum)
+    for row in task.history:
+        if row.date <= day:
+            row.progress = amounts.get(row.date, 0)
+            row.completed = row.quota > 0 and row.progress >= row.quota
+    current = next((row for row in task.history if row.date == day), None)
+    task.daily_done = bool(current and current.completed and task.daily_minimum > 0)
+
+
 def _refresh_task(task: Task, day: date, amounts: dict[date | None, int], record_count: int) -> None:
     """Rebuild cached task/history projections from active progress records."""
     task.today_amount = amounts.get(day, 0)
     task.record_count = record_count
     task.plan_expired = False
     if task.course_items is not None:
-        task.today_amount = _course_day_amounts(task).get(day, 0)
+        _refresh_minimum(task, day, _course_day_amounts(task))
+        task.progress = sum(bool(item['done']) for item in task.course_items if not item['name'].endswith('/'))
+        _finish(task, task.progress >= task.target)
         return
     if task.daily_plan is None and task.daily_quota == 0:
         task.progress = min(task.target, sum(amount for record_day, amount in amounts.items()
                                              if record_day is None or record_day <= day))
-        task.daily_date = day
-        task.daily_progress = min(task.today_amount, task.daily_minimum)
-        if task.daily_minimum > 0 and task.today_amount > 0:
-            _history_row(task, day, task.daily_minimum)
-        for row in task.history:
-            if row.date <= day:
-                row.progress = amounts.get(row.date, 0)
-                row.completed = row.quota > 0 and row.progress >= row.quota
-        current = next((row for row in task.history if row.date == day), None)
-        task.daily_done = bool(current and current.completed and task.daily_minimum > 0)
+        _refresh_minimum(task, day, amounts)
         _finish(task, task.progress >= task.target)
         return
 
@@ -291,6 +299,7 @@ async def create_task(session: AsyncSession, owner_id: str, body: TaskCreate) ->
     if body.course_items is not None:
         values['course_items'] = [{'name': item.name, 'done': False} for item in body.course_items]
         values['target'] = sum(not item.name.endswith('/') for item in body.course_items)
+        values['unit'] = '节'
     task = Task(**values, owner_id=owner_id, position=max((item.position for item in tasks), default=-1) + 1, progress=0, daily_date=today(), history=[])
     session.add(task)
     await session.flush()
@@ -302,7 +311,7 @@ async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body:
     task = await get_task(session, owner_id, task_id)
     values = body.model_dump(exclude_unset=True)
     for key, value in values.items():
-        if value is None and key != 'reward_id':
+        if value is None and key != 'reward_id' and not (key == 'daily_goal' and task.course_items is not None):
             raise HTTPException(422, f'{key} cannot be null')
     if 'name' in values:
         await _unique_name(session, owner_id, values['name'], task.id)
@@ -316,11 +325,11 @@ async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body:
         raise HTTPException(422, 'Only existing daily tasks have an editable daily quota')
     if values.get('daily_minimum', task.daily_minimum) > values.get('target', task.target):
         raise HTTPException(422, 'Daily minimum cannot exceed the total target')
-    if 'daily_minimum' in values and (task.daily_quota > 0 or task.daily_plan is not None or task.course_items is not None):
-        raise HTTPException(422, 'Only ordinary tasks have a separate daily minimum')
+    if 'daily_minimum' in values and (task.daily_quota > 0 or task.daily_plan is not None):
+        raise HTTPException(422, 'Only ordinary and course tasks have a separate daily minimum')
     daily_goal = values.get('daily_goal', task.daily_goal)
-    if 'daily_goal' in values and (task.daily_plan is not None or task.course_items is not None):
-        raise HTTPException(422, 'Separate daily goals are only supported on ordinary and daily tasks')
+    if 'daily_goal' in values and task.daily_plan is not None:
+        raise HTTPException(422, 'Plan tasks derive daily goals from their schedule')
     if daily_goal is not None:
         minimum = values.get('daily_quota', task.daily_quota) or values.get('daily_minimum', task.daily_minimum)
         if daily_goal < minimum:

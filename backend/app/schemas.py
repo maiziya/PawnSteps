@@ -41,17 +41,18 @@ class TaskCreate(BaseModel):
 
     @model_validator(mode='after')
     def check_type(self) -> 'TaskCreate':
+        effective_target = sum(not item.name.endswith('/') for item in self.course_items) if self.course_items is not None else self.target
         if self.daily_goal is not None:
-            if self.daily_plan is not None or self.course_items is not None:
-                raise ValueError('Separate daily goals are only supported on ordinary and daily tasks')
+            if self.daily_plan is not None:
+                raise ValueError('Plan tasks derive daily goals from their schedule')
             if self.daily_goal < (self.daily_quota or self.daily_minimum):
                 raise ValueError('Daily goal cannot be lower than the daily minimum')
-            if not self.daily_quota and self.daily_goal > self.target:
+            if not self.daily_quota and self.daily_goal > effective_target:
                 raise ValueError('Daily goal cannot exceed the total target')
-        if self.daily_minimum > self.target:
+        if self.daily_minimum > effective_target:
             raise ValueError('Daily minimum cannot exceed the total target')
-        if self.daily_minimum and (self.daily_quota or self.daily_plan is not None or self.course_items is not None):
-            raise ValueError('Daily minimum is only configured separately on ordinary tasks')
+        if self.daily_minimum and (self.daily_quota or self.daily_plan is not None):
+            raise ValueError('Daily minimum is configured separately on ordinary and course tasks')
         if self.daily_plan is not None:
             if any(value < -1 or value > 10000 for value in self.daily_plan):
                 raise ValueError('Plan quotas must be between -1 and 10000')
