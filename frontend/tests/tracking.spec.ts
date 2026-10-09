@@ -34,7 +34,7 @@ test('ordinary progress unlocks its reward, updates XP, and deletion can be undo
   await taskCard(page, taskName).getByRole('button', { name: `任务操作：${taskName}`, exact: true }).click();
   await page.getByRole('menuitem', { name: `删除${taskName}`, exact: true }).click();
   await expect(taskCard(page, taskName)).toHaveCount(0);
-  await page.getByRole('button', { name: '撤销', exact: true }).click();
+  await page.locator('[data-sonner-toast]').filter({ hasText: '任务已删除' }).getByRole('button', { name: '撤销', exact: true }).click();
   await expect(taskCard(page, taskName)).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: '已完成任务', exact: true })).toHaveAttribute('aria-expanded', 'false');
@@ -57,11 +57,12 @@ test('daily entries count one day, revoking a record reopens the day, and the re
   await dialog.getByRole('article').filter({ hasText: '晚上再读一页' }).getByRole('button', { name: '撤销记录', exact: true }).click();
   await expect(dialog.getByRole('article')).toHaveCount(1);
   await page.keyboard.press('Escape');
-  await expect(taskCard(page, name)).toContainText('0 / 7 天');
+  await expect(taskCard(page, name)).toContainText('今日 1 / 2 页');
   await page.reload();
   await expect(taskCard(page, name)).toBeVisible();
   state = await persistedState(page);
   expect(state.tasks[0].daily_done).toBe(false);
+  expect(state.tasks[0].progress).toBe(0);
   expect(state.tasks[0].today_amount).toBe(1);
   expect(state.tasks[0].record_count).toBe(1);
   expect(state.stats.streak).toBe(0);
@@ -70,7 +71,7 @@ test('daily entries count one day, revoking a record reopens the day, and the re
 test('a planned rest day is marked complete while positive quotas define the total', async ({ page }) => {
   const name = uniqueName('有节奏的计划');
   await createTask(page, name, { kind: 'plan', plan: '0, 10, -1, 5' });
-  await expect(taskCard(page, name)).toContainText('今天是休息日，安心休息');
+  await expect(taskCard(page, name)).toContainText('今日休息');
   const task = (await persistedState(page)).tasks.find(task => task.name === name)!;
   expect(task.target).toBe(15);
   expect(task.progress).toBe(0);

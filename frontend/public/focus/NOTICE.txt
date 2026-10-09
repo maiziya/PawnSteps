@@ -1,0 +1,11 @@
+PawnSteps focus timer asset notices
+
+paper.jpg: ambientCG Paper001, by Lennart Demes.
+Source: https://ambientcg.com/a/Paper001
+License: CC0 1.0 Universal; https://docs.ambientcg.com/license/
+Original 1K JPG color map, redistributed without modification.
+
+DMMono-Medium.ttf: Copyright 2020 The DM Mono Project Authors.
+Source: https://github.com/google/fonts/tree/main/ofl/dmmono
+License: SIL Open Font License 1.1; the complete license is in OFL.txt.
+Font redistributed without modification.

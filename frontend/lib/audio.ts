@@ -1,4 +1,4 @@
-export type Sound = "step" | "complete" | "daily" | "reward";
+export type Sound = "step" | "complete" | "daily" | "reward" | "focus";
 let context: AudioContext | undefined;
 export function primeAudio() {
   if (typeof window === "undefined") return;
@@ -10,6 +10,7 @@ export function playSound(kind: Sound) {
   if (!context) return;
   const ctx = context;
   const melodies: Record<Sound, [number, number, number][]> = {
+    focus: [[880, 0, .35], [659.25, .4, .35], [880, .8, .6], [1046.5, 1.5, .7]],
     step: [[660, 0, .09]],
     daily: [[523.25, 0, .14], [783.99, .16, .22]],
     complete: [[523.25, 0, .15], [659.25, .12, .15], [783.99, .24, .15], [1046.5, .36, .4]],

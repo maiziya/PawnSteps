@@ -6,6 +6,17 @@ export function getGuestId() {
   if (!id) { id = crypto.randomUUID(); localStorage.setItem("pawnsteps-guest-id", id); }
   return id;
 }
+export function ownerIdentity(): string {
+  const token = localStorage.getItem("pawnsteps-token");
+  if (token) {
+    try {
+      const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      const claims = JSON.parse(atob(payload));
+      return `user:${claims.sub}`;
+    } catch { return "invalid-token"; }
+  }
+  return `guest:${getGuestId()}`;
+}
 export function headers(): Record<string, string> {
   const token = localStorage.getItem("pawnsteps-token");
   return { "X-Guest-Id": getGuestId(), ...(token ? { Authorization: `Bearer ${token}` } : {}) };

@@ -1,7 +1,7 @@
 "use client";
 import { create } from "zustand";
 import { toast } from "sonner";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, ownerIdentity } from "@/lib/api";
 import { playSound } from "@/lib/audio";
 import type { MutationResponse, Reward, Stats, Task, User } from "@/lib/types";
 
@@ -32,6 +32,7 @@ let queue: Promise<unknown> = Promise.resolve();
 function serial<T>(operation: () => Promise<T>): Promise<T> {
   const next = queue.then(operation, operation); queue = next.catch(() => undefined); return next;
 }
+export interface MutationOptions { expectedOwner?: string; quiet?: boolean; feedback?: boolean; completionHint?: { taskId: string; wasDone: boolean } }
 interface AppState {
   tasks: Task[]; rewards: Reward[]; stats: Stats; user: User | null;
   today: string; timezone: string;
@@ -40,7 +41,7 @@ interface AppState {
   quickFeedback: Record<string, QuickFeedback>;
   completionUndo: CompletionUndo | null;
   initialize: () => Promise<void>; refresh: () => Promise<void>;
-  mutate: (path: string, body?: unknown, method?: string) => Promise<MutationResponse>;
+  mutate: (path: string, body?: unknown, method?: string, options?: MutationOptions) => Promise<MutationResponse>;
   quickRecord: (taskId: string, amount: number) => Promise<void>;
   undoCompletion: () => Promise<void>;
   logout: () => Promise<void>; dismissUnlock: () => void;
@@ -66,7 +67,7 @@ export const useAppStore = create<AppState>((set, get) => {
     });
   }
 
-  function apply(data: MutationResponse, feedback = false) {
+  function apply(data: MutationResponse, feedback = false, completionHint?: MutationOptions["completionHint"]) {
     const before = get();
     if (data.access_token) localStorage.setItem("pawnsteps-token", data.access_token);
     const unlocked = data.unlocked_reward || (feedback ? data.rewards.find(r => r.is_unlocked && before.rewards.some(old => old.id === r.id && !old.is_unlocked)) : null);
@@ -80,6 +81,13 @@ export const useAppStore = create<AppState>((set, get) => {
       completionUndo: receiptInvalid ? null : receipt, unlocked: unlocked || pendingUnlock,
       ...(data.user ? { user: data.user } : {}) });
     if (!feedback) return;
+    const completedTask = data.record && !data.record.deleted_at && data.tasks.find(task => task.id === data.record!.task_id && task.is_done && (before.tasks.some(old => old.id === task.id && !old.is_done) || completionHint?.taskId === task.id && !completionHint.wasDone));
+    if (completedTask && data.record) {
+      if (receipt) toast.dismiss(completionToastId(receipt.recordId));
+      const next: CompletionUndo = { taskId: completedTask.id, recordId: data.record.id, requestId: data.record.request_id || data.record.id,
+        ownerId: completedTask.owner_id, taskName: completedTask.name, rewardId: unlocked?.id || null, toastVisible: true, pending: false };
+      set({ completionUndo: next }); showCompletionToast(next);
+    }
     if (unlocked) playSound("reward");
     else if (data.tasks.some(t => t.is_done && before.tasks.some(old => old.id === t.id && !old.is_done))) playSound("complete");
     else if (data.tasks.some(t => t.daily_done && before.tasks.some(old => old.id === t.id && !old.daily_done))) playSound("daily");
@@ -98,17 +106,19 @@ export const useAppStore = create<AppState>((set, get) => {
       catch (error) { set({ error: error instanceof Error ? error.message : "暂时无法连接服务" }); }
       finally { set({ loading: false }); }
     }),
-    mutate: (path, body, method = "POST") => serial(async () => {
+    mutate: (path, body, method = "POST", options = {}) => serial(async () => {
+      if (options.expectedOwner && options.expectedOwner !== ownerIdentity()) throw new Error("账号已切换，请重新操作");
       set({ busy: true });
       try {
         const data = await api<MutationResponse>(path, { method, ...(body !== undefined ? { body: body instanceof FormData ? body : JSON.stringify(body) } : {}) });
-        apply(data, true);
+        if (options.expectedOwner && options.expectedOwner !== ownerIdentity()) throw new Error("账号已切换，请重新操作");
+        apply(data, options.feedback !== false, options.completionHint);
         if (data.undo_token) {
           toast("任务已删除", { duration: 5000, action: { label: "撤销", onClick: () => { void get().mutate("/tasks/undo", { token: data.undo_token }).catch(() => undefined); } } });
         }
         return data;
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "操作未完成");
+        if (!options.quiet) toast.error(error instanceof Error ? error.message : "操作未完成");
         if (error instanceof ApiError && error.status === 401 && localStorage.getItem("pawnsteps-token")) set({ error: "登录已过期，请在个人中心重新登录" });
         throw error;
       } finally { set({ busy: false }); }
@@ -148,18 +158,6 @@ export const useAppStore = create<AppState>((set, get) => {
           return;
         }
         set(state => ({ quickFeedback: { ...state.quickFeedback, [taskId]: { ...feedback, amount: amount < 0 ? -1 : response.record?.amount ?? amount, phase: "saved" } } }));
-        const updatedTask = response.tasks.find(item => item.id === taskId);
-        if (amount > 0 && !task.is_done && updatedTask?.is_done && response.record && !response.record.deleted_at) {
-          const existing = get().completionUndo;
-          if (existing) toast.dismiss(completionToastId(existing.recordId));
-          const receipt: CompletionUndo = {
-            taskId, recordId: response.record.id, requestId, ownerId: updatedTask.owner_id,
-            taskName: updatedTask.name, rewardId: response.unlocked_reward?.id || null,
-            toastVisible: true, pending: false,
-          };
-          set({ completionUndo: receipt });
-          showCompletionToast(receipt);
-        }
         setTimeout(() => {
           const active = get().quickFeedback[taskId];
           if (active?.requestId !== requestId || active.phase !== "saved") return;

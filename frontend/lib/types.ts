@@ -35,6 +35,7 @@ export interface MutationResponse {
   image_url?: string | null; authorization_url?: string | null;
   message?: string | null; retry_after?: number | null;
   record?: ProgressRecord | null;
+  focus?: import("./focus-types").FocusState | null;
 }
 export interface HistoryEntry { task_id: string; task_name: string; date: string; completed: boolean; amount: number; unit: string; task_kind: "normal" | "daily" | "plan" | "course"; quota: number | null }
 export interface HistoryResponse { history: HistoryEntry[]; streak: number; rest_dates: string[] }

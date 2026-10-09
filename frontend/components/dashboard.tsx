@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
-import { ArrowRight, BookOpen, CalendarDays, Check, ChevronDown, CircleHelp, Flag, Footprints, Gift, LayoutDashboard, Moon, Plus, RefreshCw, Search, Sun, TrendingUp, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, Check, ChevronDown, CircleHelp, Flag, Footprints, Gift, LayoutDashboard, Moon, Plus, RefreshCw, Search, Sun, TrendingUp, Timer, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { Toaster } from "sonner";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
@@ -20,10 +20,14 @@ import { ProgressRecords } from "@/components/progress-records";
 import { AccountPanel } from "@/components/account-panel";
 import { RewardsPanel } from "@/components/rewards-panel";
 import { CalendarPanel } from "@/components/calendar-panel";
+import { FocusPanel } from "./focus-panel";
+import { FocusProvider, FocusMini, FocusNavLabel } from "./focus-provider";
+import { useFocusStore } from "@/lib/focus-store";
 import "./workspace.css";
 
 const navigation = [
   { id: "tasks", label: "我的任务", title: "我的任务", icon: LayoutDashboard },
+  { id: "focus", label: "专注计时", title: "专注计时", icon: Timer },
   { id: "calendar", label: "打卡日历", title: "打卡日历", icon: CalendarDays },
   { id: "rewards", label: "心愿奖励", title: "心愿奖励", icon: Gift },
   { id: "account", label: "个人中心", title: "个人中心", icon: UserRound },
@@ -57,7 +61,8 @@ export function Dashboard() {
 
   useEffect(() => {
     void initialize();
-    if (location.hash === "#account") setView("account");
+    const fromHash = () => { const next = location.hash.slice(1); if (navigation.some(item => item.id === next)) setView(next as View); };
+    fromHash(); window.addEventListener("hashchange", fromHash);
     const timer = setInterval(() => { if (!document.hidden) void refresh(); }, 60_000);
     const onVisible = () => { if (!document.hidden) void refresh(); };
     document.addEventListener("visibilitychange", onVisible);
@@ -66,6 +71,7 @@ export function Dashboard() {
     document.addEventListener("keydown", primeAudio);
     return () => {
       clearInterval(timer);
+      window.removeEventListener("hashchange", fromHash);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
       document.removeEventListener("pointerdown", primeAudio);
@@ -147,10 +153,16 @@ export function Dashboard() {
 
   function changeView(next: View) {
     setView(next);
+    history.replaceState(null, "", `#${next}`);
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  return <MotionConfig reducedMotion="user"><div className="app-shell">
+  function startFocus(taskId: string) {
+    changeView("focus");
+    void useFocusStore.getState().start(taskId).catch(() => undefined);
+  }
+
+  return <MotionConfig reducedMotion="user"><div className="app-shell"><FocusProvider />
     <a className="skip-link" href="#main-content">跳到主要内容</a>
     <aside className="sidebar">
       <a href="/" className="brand" aria-label="PawnSteps 首页"><span className="brand-symbol"><Footprints size={23} strokeWidth={2.2} /></span><span>PawnSteps<small>日拱一卒</small></span></a>
@@ -171,6 +183,7 @@ export function Dashboard() {
         <div className="topbar">
           <div className="workspace-title"><Footprints size={20} className="mobile-brand" /><h1>{navigation.find(item => item.id === view)?.title}</h1><span className="date-label">{dateLabel}</span></div>
           <div className="topbar-actions">
+            {view !== "focus" && <FocusMini onClick={() => changeView("focus")} />}
             {view === "tasks" && hasTasks && <div className="search-field desktop-search"><Search size={17} /><Input aria-label="搜索任务" placeholder="搜索任务" value={query} onChange={event => setQuery(event.target.value)} />{query && <button className="icon-button" aria-label="清除搜索" onClick={() => setQuery("")}><X size={15} /></button>}</div>}
             {view === "tasks" && hasTasks && <button className="icon-button mobile-tool" aria-label="搜索任务" aria-expanded={searchOpen} onClick={() => setSearchOpen(value => !value)}><Search size={18} /></button>}
             <button className="icon-button mobile-tool" onClick={toggleTheme} aria-label="切换主题">{dark ? <Sun size={18} /> : <Moon size={18} />}</button>
@@ -209,19 +222,20 @@ export function Dashboard() {
               {!visible.length && <div className="empty-state"><span className="empty-symbol"><Search size={25} /></span><h2>这里暂时没有匹配的任务</h2><p>换个关键词，或者看看其他分类。</p><Button variant="secondary" onClick={() => { setQuery(""); setFilter("all"); }}>查看全部任务<ArrowRight size={16} /></Button></div>}
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorder}>
                 <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
-                  <div className="task-list"><AnimatePresence initial={false}>{active.map(task => <motion.div key={task.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TaskCard task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} /></motion.div>)}</AnimatePresence></div>
+                  <div className="task-list"><AnimatePresence initial={false}>{active.map(task => <motion.div key={task.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TaskCard task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} /></motion.div>)}</AnimatePresence></div>
                 </SortableContext>
                 {resting.length > 0 && <section className="completed-section">
                   <button className="completed-toggle" aria-label="今日休息的任务" aria-expanded={restExpanded} aria-controls="resting-task-list" onClick={() => setShowRest(value => !value)}><ChevronDown size={17} className={restExpanded ? '' : 'collapsed'} /><Moon size={16} /><span>今日休息</span><span className="completed-count">{resting.length}</span><span className="completed-hint">{restExpanded ? '收起' : '展开查看'}</span></button>
-                  {restExpanded && <SortableContext items={resting.map(task => task.id)} strategy={verticalListSortingStrategy}><div id="resting-task-list" role="region" aria-label="今日休息任务列表" className="task-list">{resting.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} />)}</div></SortableContext>}
+                  {restExpanded && <SortableContext items={resting.map(task => task.id)} strategy={verticalListSortingStrategy}><div id="resting-task-list" role="region" aria-label="今日休息任务列表" className="task-list">{resting.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} />)}</div></SortableContext>}
                 </section>}
                 {done.length > 0 && <section className="completed-section">
                   <button ref={completedToggle} className="completed-toggle" aria-label="已完成任务" aria-expanded={completedExpanded} aria-controls="completed-task-list" onClick={() => { if (filter === "done") { setFilter("all"); setShowCompleted(false); } else setShowCompleted(value => !value); }}><ChevronDown size={17} className={completedExpanded ? "" : "collapsed"} /><Check size={16} /><span>已完成任务</span><span className="completed-count" aria-hidden="true">{done.length}</span><span className="completed-hint" aria-hidden="true">{completedExpanded ? "收起" : "展开查看"}</span></button>
-                  {completedExpanded && <div id="completed-task-list" role="region" aria-label="已完成任务列表" className="task-list">{done.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} />)}</div>}
+                  {completedExpanded && <div id="completed-task-list" role="region" aria-label="已完成任务列表" className="task-list">{done.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} />)}</div>}
                 </section>}
               </DndContext>
             </section>
           </div>}
+          {view === "focus" && <FocusPanel />}
           {view === "calendar" && <CalendarPanel />}
           {view === "rewards" && <RewardsPanel />}
           {view === "account" && <AccountPanel />}
@@ -230,7 +244,7 @@ export function Dashboard() {
       <footer className="page-footer"><span>PawnSteps · 每一步，都算数</span><Link href="/admin">管理入口</Link></footer>
     </div>
 
-    <nav className="mobile-nav" aria-label="移动导航">{navigation.map(item => <button key={item.id} className={view === item.id ? "active" : ""} onClick={() => changeView(item.id)} aria-current={view === item.id ? "page" : undefined}><item.icon size={21} /><span>{item.label}</span></button>)}</nav>
+    <nav className="mobile-nav" aria-label="移动导航">{navigation.map(item => <button key={item.id} aria-label={item.label} className={view === item.id ? "active" : ""} onClick={() => changeView(item.id)} aria-current={view === item.id ? "page" : undefined}><item.icon size={21} />{item.id === "focus" ? <FocusNavLabel /> : <span>{item.label}</span>}</button>)}</nav>
     <TaskForm open={formOpen} onOpenChange={setFormOpen} task={editing} initialKind={initialKind} />
     <ProgressRecords taskId={recordTaskId} onClose={() => setRecordTaskId(null)} />
     <Dialog open={Boolean(course)} onOpenChange={open => { if (!open) setCourseId(null); }}>

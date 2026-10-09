@@ -73,7 +73,8 @@ test('creating the first task enters the workspace, unmatched filters stay disti
   await expect(page.getByRole('textbox', { name: '搜索任务', exact: true })).toBeVisible();
   expect((await persistedState(page)).tasks.map(task => task.name)).toEqual([name]);
 
-  await filters.getByRole('button', { name: '每日打卡', exact: true }).click();
+  // Ordinary tasks now qualify for daily tracking by default; the course filter remains disjoint.
+  await filters.getByRole('button', { name: '课程学习', exact: true }).click();
   const noMatch = page.locator('.empty-state');
   await expect(noMatch.getByRole('heading', { name: '这里暂时没有匹配的任务', exact: true })).toBeVisible();
   await expect(page.locator('.onboarding')).toHaveCount(0);

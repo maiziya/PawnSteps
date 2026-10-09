@@ -29,7 +29,11 @@ function projectItems(source: CourseItem[], updates: PendingUpdate[]): CourseIte
   return source.map((item, index) => changes.has(index) ? { ...item, done: changes.get(index)! } : item);
 }
 
-export function CourseItems({ task }: { task: Task }) {
+export function CourseItems({ task, onSelectionChange, readonlyIndices = [] }: { task: Task; onSelectionChange?: (indices: number[], done: boolean) => void; readonlyIndices?: number[] }) {
+  const selectionCallback = useRef(onSelectionChange);
+  selectionCallback.current = onSelectionChange;
+  const readonlyRef = useRef(new Set(readonlyIndices));
+  readonlyRef.current = new Set(readonlyIndices);
   const [pendingUpdates, setPendingUpdates] = useState<PendingUpdate[]>([]);
   const pendingRef = useRef<PendingUpdate[]>([]);
   const updateId = useRef(0);
@@ -77,9 +81,13 @@ export function CourseItems({ task }: { task: Task }) {
   }
 
   async function setItems(indices: number[], done: boolean) {
-    const eligible = [...new Set(indices)].filter(index => itemsRef.current[index] && !itemsRef.current[index].name.endsWith('/'));
+    const eligible = [...new Set(indices)].filter(index => itemsRef.current[index] && !itemsRef.current[index].name.endsWith('/') && !readonlyRef.current.has(index));
     if (!eligible.some(index => itemsRef.current[index].done !== done)) return;
     if (!eligible.length) return;
+    if (selectionCallback.current) {
+      itemsRef.current = projectItems(itemsRef.current, [{ id: 0, indices: eligible, done }]);
+      selectionCallback.current(eligible, done); return;
+    }
     const update: PendingUpdate = { id: ++updateId.current, indices: eligible, done };
     pendingRef.current = [...pendingRef.current, update];
     // Publish intent before rendering or awaiting the network so the next gesture sees it.
@@ -111,7 +119,8 @@ export function CourseItems({ task }: { task: Task }) {
     element.querySelectorAll<HTMLElement>('[data-course-item]').forEach(item => {
       const itemBounds = item.getBoundingClientRect();
       if (itemBounds.left < bounds.left + rect.left + rect.width && itemBounds.right > bounds.left + rect.left && itemBounds.top < bounds.top + rect.top + rect.height && itemBounds.bottom > bounds.top + rect.top) {
-        indices.add(Number(item.dataset.courseItem));
+        const index = Number(item.dataset.courseItem);
+        if (!readonlyRef.current.has(index)) indices.add(index);
       }
     });
     if (indices.size !== selectedRef.current.size || [...indices].some(index => !selectedRef.current.has(index))) {
@@ -279,14 +288,14 @@ export function CourseItems({ task }: { task: Task }) {
                   <span className="truncate">{group.name}</span>
                   <span className="course-group-count ml-auto shrink-0 pr-2 font-normal tabular-nums">{completed}/{group.indices.length}</span>
                 </button>
-                <button type="button" onClick={() => void setItems(group.indices, !complete)} className="min-h-11 px-2 text-xs text-[var(--primary)] disabled:opacity-40" aria-label={`${complete ? '取消完成' : '完成'}${group.name}全部条目`}>
+                <button type="button" disabled={group.indices.every(index => readonlyRef.current.has(index))} onClick={() => void setItems(group.indices, !complete)} className="min-h-11 px-2 text-xs text-[var(--primary)] disabled:opacity-40" aria-label={`${complete ? '取消完成' : '完成'}${group.name}全部条目`}>
                   {complete ? '取消全选' : '全选'}
                 </button>
               </div>
               {isOpen && <div className="grid grid-cols-1 gap-1 p-3 sm:grid-cols-2">
                 {group.indices.map(index => (
                   <label key={index} data-course-item={index} data-completed={items[index].done} className={`course-item flex min-h-11 cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm ${items[index].done ? 'is-complete' : ''} ${selected.has(index) ? `is-selected outline ${selectionCompletes ? 'will-complete' : 'will-clear'}` : ''}`}>
-                    <input type="checkbox" className="peer sr-only" checked={items[index].done} onChange={event => void setItems([index], event.target.checked)} />
+                    <input type="checkbox" disabled={readonlyRef.current.has(index)} className="peer sr-only" checked={items[index].done} onChange={event => void setItems([index], event.target.checked)} />
                     <span className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--primary)] peer-focus-visible:ring-offset-2 ${items[index].done ? 'border-[var(--success)] bg-[var(--success)] text-[var(--surface)]' : 'border-[var(--border)]'}`} aria-hidden="true">
                       {items[index].done && <Check size={12} strokeWidth={3} />}
                     </span>

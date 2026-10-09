@@ -5,7 +5,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, useReducedMotion } from 'framer-motion';
-import { ArrowRight, BookOpen, CalendarDays, Check, FileText, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Trash2 } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarDays, Check, FileText, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Timer, Trash2 } from 'lucide-react';
 import type { Task } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
 import { scheduleLabel } from './schedule-fields';
@@ -16,9 +16,10 @@ interface TaskCardProps {
   onEdit: (task: Task) => void;
   onOpenCourse: (taskId: string) => void;
   onOpenRecords: (taskId: string) => void;
+  onStartFocus: (taskId: string) => void;
 }
 
-export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords }: TaskCardProps) {
+export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFocus }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: task.is_done });
   const mutate = useAppStore(state => state.mutate);
   const busy = useAppStore(state => state.busy);
@@ -93,6 +94,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords }: TaskCard
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className="task-action-menu" align="end" sideOffset={6} collisionPadding={12}>
+                  {!task.is_done && <DropdownMenu.Item disabled={busy || saving} className="task-action-item" onSelect={() => onStartFocus(task.id)}><Timer size={16} />开始专注</DropdownMenu.Item>}
                   <DropdownMenu.Item disabled={busy || saving} className="task-action-item" aria-label={`编辑${task.name}`} onSelect={() => onEdit(task)}><Pencil size={16} />编辑任务</DropdownMenu.Item>
                   {!isCourse && <DropdownMenu.Item disabled={busy || saving} className="task-action-item" aria-label={`${task.name}查看记录`} onSelect={() => onOpenRecords(task.id)}><History size={16} />查看记录</DropdownMenu.Item>}
                   <DropdownMenu.Item className="task-action-item" onSelect={() => setDescriptionOpen(open => !open)} aria-controls={descriptionId} aria-expanded={descriptionOpen}><FileText size={16} />{`${descriptionOpen ? '收起' : '查看'}${detailsLabel}`}</DropdownMenu.Item>
