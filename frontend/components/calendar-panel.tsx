@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Check, Circle, ChevronLeft, ChevronRight, Flame, List, Moon, RefreshCw } from "lucide-react";
+import { CalendarDays, ChartNoAxesCombined, Check, Circle, ChevronLeft, ChevronRight, Flame, List, Moon, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import type { HistoryEntry, HistoryResponse } from "@/lib/types";
@@ -46,7 +46,7 @@ function ActivityRow({ entry }: { entry: HistoryEntry }) {
   </li>;
 }
 
-export function CalendarPanel() {
+export function CalendarPanel({ onReview }: { onReview: () => void }) {
   const tasks = useAppStore(state => state.tasks);
   const streak = useAppStore(state => state.stats.streak);
   const serverToday = useAppStore(state => state.today);
@@ -116,7 +116,7 @@ export function CalendarPanel() {
   return <section className="collections-panel calendar-panel" aria-label="打卡记录">
     <div className="calendar-toolbar">
       <div className="calendar-month-nav"><button className="icon-button" type="button" aria-label="上个月" onClick={() => moveMonth(-1)}><ChevronLeft size={20} /></button><h2>{month.getFullYear()} 年 {month.getMonth() + 1} 月</h2><button className="icon-button" type="button" aria-label="下个月" onClick={() => moveMonth(1)}><ChevronRight size={20} /></button><Button variant="ghost" size="sm" onClick={goToday}>今天</Button></div>
-      <div className="calendar-view-toggle" role="group" aria-label="打卡记录视图"><button type="button" aria-label="月历" aria-pressed={view === "calendar"} onClick={() => setView("calendar")}><CalendarDays size={16} /><span>月历</span></button><button type="button" aria-label="列表" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={17} /><span>列表</span></button></div>
+      <div className="calendar-view-toggle" role="group" aria-label="打卡记录视图"><button type="button" aria-label="月历" aria-pressed={view === "calendar"} onClick={() => setView("calendar")}><CalendarDays size={16} /><span>月历</span></button><button type="button" aria-label="列表" aria-pressed={view === "list"} onClick={() => setView("list")}><List size={17} /><span>列表</span></button><button type="button" aria-label="每周回顾" onClick={onReview}><ChartNoAxesCombined size={17} /><span>回顾</span></button></div>
     </div>
     {error && <div className="calendar-error" role="alert"><span>{error}</span><Button variant="outline" size="sm" onClick={() => setRetry(value => value + 1)}><RefreshCw size={15} />重试</Button></div>}
     <div className="calendar-summary-row"><div className="calendar-month-summary" aria-live="polite">{loading ? "正在加载记录" : <><span>本月 <strong>{recordedDays.length}</strong> 天有进度</span><span>共 <strong>{Object.values(byDay).reduce((sum, entries) => sum + entries.length, 0)}</strong> 项任务记录</span></>}</div><div className="calendar-streak"><Flame size={16} aria-hidden="true" /><span>连续 <strong>{streak}</strong> 天</span></div></div>

@@ -22,7 +22,7 @@ function sortRecords(records: ProgressRecord[]): ProgressRecord[] {
   return records.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
 }
 
-export function ProgressRecords({ taskId, onClose }: { taskId: string | null; onClose: () => void }) {
+export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: string | null; onClose: () => void; returnFocus?: () => HTMLElement | null }) {
   const task = useAppStore(state => state.tasks.find(item => item.id === taskId));
   const mutate = useAppStore(state => state.mutate);
   const busy = useAppStore(state => state.busy);
@@ -154,7 +154,7 @@ export function ProgressRecords({ taskId, onClose }: { taskId: string | null; on
         const completedToggle = document.querySelector<HTMLButtonElement>('.completed-toggle');
         const finished = state.tasks.find(item => item.id === id)?.is_done;
         const trigger = id ? document.querySelector<HTMLButtonElement>(`[data-record-trigger="${id}"]`) : null;
-        const target = finished && completedToggle?.getAttribute('aria-expanded') === 'false' ? completedToggle : trigger || completedToggle;
+        const target = returnFocus?.() || (finished && completedToggle?.getAttribute('aria-expanded') === 'false' ? completedToggle : trigger || completedToggle);
         target?.focus({ preventScroll: true });
       });
     }}>

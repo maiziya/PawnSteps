@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
-import { ArrowRight, BookOpen, CalendarDays, Check, ChevronDown, CircleHelp, Flag, Footprints, Gift, LayoutDashboard, Moon, Plus, RefreshCw, Search, Sun, TrendingUp, Timer, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, ChartNoAxesCombined, Check, ChevronDown, CircleHelp, Flag, Footprints, Gift, LayoutDashboard, Moon, Plus, RefreshCw, Search, Sun, TrendingUp, Timer, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { Toaster } from "sonner";
 import Link from "next/link";
 import { useAppStore } from "@/lib/store";
@@ -20,6 +20,7 @@ import { ProgressRecords } from "@/components/progress-records";
 import { AccountPanel } from "@/components/account-panel";
 import { RewardsPanel } from "@/components/rewards-panel";
 import { CalendarPanel } from "@/components/calendar-panel";
+import { ReviewPanel } from "./review-panel";
 import { FocusPanel } from "./focus-panel";
 import { FocusProvider, FocusMini, FocusNavLabel } from "./focus-provider";
 import { useFocusStore } from "@/lib/focus-store";
@@ -29,6 +30,7 @@ const navigation = [
   { id: "tasks", label: "我的任务", title: "我的任务", icon: LayoutDashboard },
   { id: "focus", label: "专注计时", title: "专注计时", icon: Timer },
   { id: "calendar", label: "打卡日历", title: "打卡日历", icon: CalendarDays },
+  { id: "review", label: "每周回顾", title: "每周回顾", icon: ChartNoAxesCombined },
   { id: "rewards", label: "心愿奖励", title: "心愿奖励", icon: Gift },
   { id: "account", label: "个人中心", title: "个人中心", icon: UserRound },
 ] as const;
@@ -236,7 +238,8 @@ export function Dashboard() {
             </section>
           </div>}
           {view === "focus" && <FocusPanel />}
-          {view === "calendar" && <CalendarPanel />}
+          {view === "calendar" && <CalendarPanel onReview={() => changeView("review")} />}
+          {view === "review" && <ReviewPanel onCalendar={() => changeView("calendar")} onTask={id => { const task = tasks.find(item => item.id === id); if (task?.course_items) openCourse(id); else setRecordTaskId(id); }} />}
           {view === "rewards" && <RewardsPanel />}
           {view === "account" && <AccountPanel />}
         </>}
@@ -244,20 +247,20 @@ export function Dashboard() {
       <footer className="page-footer"><span>PawnSteps · 每一步，都算数</span><Link href="/admin">管理入口</Link></footer>
     </div>
 
-    <nav className="mobile-nav" aria-label="移动导航">{navigation.map(item => <button key={item.id} aria-label={item.label} className={view === item.id ? "active" : ""} onClick={() => changeView(item.id)} aria-current={view === item.id ? "page" : undefined}><item.icon size={21} />{item.id === "focus" ? <FocusNavLabel /> : <span>{item.label}</span>}</button>)}</nav>
+    <nav className="mobile-nav" aria-label="移动导航">{navigation.filter(item => item.id !== "review").map(item => <button key={item.id} aria-label={item.label} className={view === item.id || view === "review" && item.id === "calendar" ? "active" : ""} onClick={() => changeView(item.id)} aria-current={view === item.id || view === "review" && item.id === "calendar" ? "page" : undefined}><item.icon size={21} />{item.id === "focus" ? <FocusNavLabel /> : <span>{item.label}</span>}</button>)}</nav>
     <TaskForm open={formOpen} onOpenChange={setFormOpen} task={editing} initialKind={initialKind} />
-    <ProgressRecords taskId={recordTaskId} onClose={() => setRecordTaskId(null)} />
+    <ProgressRecords taskId={recordTaskId} onClose={() => setRecordTaskId(null)} returnFocus={view === "review" ? () => document.getElementById("main-content") : undefined} />
     <Dialog open={Boolean(course)} onOpenChange={open => { if (!open) setCourseId(null); }}>
       <DialogContent className="course-drawer" onCloseAutoFocus={event => {
         event.preventDefault();
         const finished = useAppStore.getState().tasks.find(task => task.id === openedCourseId.current)?.is_done;
-        const target = finished && !completedExpanded ? completedToggle.current : courseOpener.current?.isConnected ? courseOpener.current : completedToggle.current || addButton.current;
+        const target = (finished && !completedExpanded ? completedToggle.current : courseOpener.current?.isConnected ? courseOpener.current : completedToggle.current || addButton.current) || document.getElementById("main-content");
         target?.focus({ preventScroll: true });
       }}>
         {course && <>
           <div className="course-drawer-header"><span className="course-drawer-eyebrow"><BookOpen size={16} />课程学习{(course.daily_goal || course.daily_minimum) > 0 && <span className={`course-daily-summary ${course.daily_done ? 'is-met' : ''}`} title={`每天最少 ${course.daily_minimum} 节，目标 ${course.daily_goal ?? course.daily_minimum} 节`}>今日 {course.today_amount} / {course.daily_goal ?? course.daily_minimum} 节{course.daily_done ? ' · 已达标' : ''}</span>}</span><DialogTitle>{course.name}</DialogTitle><DialogDescription className={course.description ? undefined : "sr-only"}>{course.description || "逐项勾选课程，记录学习进度。"}</DialogDescription><div className="course-drawer-progress"><span>{course.is_done ? "课程已完成" : "学习进度"}</span><strong>{course.progress} / {course.target} 节</strong></div><div className="course-progress-track"><span style={{ width: `${course.target ? course.progress / course.target * 100 : 0}%` }} /></div></div>
           <div className="course-drawer-body"><CourseItems key={course.id} task={course} /></div>
-          <div className="course-drawer-footer"><span>{course.is_done ? "这一程，已经走完。" : "每完成一节，都在向前。"}</span><Button variant="secondary" onClick={() => setCourseId(null)}>返回任务列表</Button></div>
+          <div className="course-drawer-footer"><span>{course.is_done ? "这一程，已经走完。" : "每完成一节，都在向前。"}</span><Button variant="secondary" onClick={() => setCourseId(null)}>{view === "review" ? "返回每周回顾" : "返回任务列表"}</Button></div>
         </>}
       </DialogContent>
     </Dialog>
