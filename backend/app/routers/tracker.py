@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
@@ -31,9 +32,11 @@ async def set_day_plan(body: DayPlanUpdate, session: Session, owner_id: OwnerId)
 
 
 @router.get('/history', response_model=HistoryResponse)
-async def history(session: Session, owner_id: OwnerId, month: str | None = Query(default=None, pattern=r'^\d{4}-\d{2}$')):
+async def history(session: Session, owner_id: OwnerId,
+                  month: str | None = Query(default=None, pattern=r'^\d{4}-\d{2}$'),
+                  week_of: date | None = Query(default=None)):
     async with tracker.owner_transaction(session, owner_id):
-        return await tracker.history(session, owner_id, month)
+        return await tracker.history(session, owner_id, month, week_of)
 
 
 @router.post('/tasks', response_model=MutationResponse, status_code=201)

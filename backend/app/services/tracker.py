@@ -604,13 +604,25 @@ async def reorder_rewards(session: AsyncSession, owner_id: str, ids: list[UUID])
     return await snapshot(session, owner_id)
 
 
-async def history(session: AsyncSession, owner_id: str, month: str | None = None) -> dict:
+async def history(session: AsyncSession, owner_id: str, month: str | None = None,
+                  week_of: date | None = None) -> dict:
+    if month is not None and week_of is not None:
+        raise HTTPException(422, 'Choose either month or week_of, not both')
     await snapshot(session, owner_id)
     first, last = date.min, today()
-    if month:
+    end = None
+    if week_of is not None:
+        try:
+            first = week_of - timedelta(days=week_of.weekday())
+            end = first + timedelta(days=6)
+            last = min(today(), end)
+        except OverflowError:
+            raise HTTPException(422, 'The selected week is outside the supported date range') from None
+    elif month:
         try:
             first = date.fromisoformat(month + '-01')
-            last = min(today(), first.replace(day=calendar.monthrange(first.year, first.month)[1]))
+            end = first.replace(day=calendar.monthrange(first.year, first.month)[1])
+            last = min(today(), end)
         except (ValueError, TypeError):
             raise HTTPException(422, 'Month must use YYYY-MM format') from None
     tasks = await _tasks(session, owner_id)
@@ -630,8 +642,7 @@ async def history(session: AsyncSession, owner_id: str, month: str | None = None
                 'task_kind': kind, 'quota': row.quota if row else None})
     entries.sort(key=lambda entry: (-entry['date'].toordinal(), entry['task_name']))
     rest_dates = []
-    if month:
-        end = first.replace(day=calendar.monthrange(first.year, first.month)[1])
+    if end is not None:
         rest_dates = [first + timedelta(days=index) for index in range((end - first).days + 1)
                       if schedules.rest_day(tasks, first + timedelta(days=index))]
     return {'history': entries, 'rest_dates': rest_dates, 'streak': await _streak(session, owner_id, tasks)}
