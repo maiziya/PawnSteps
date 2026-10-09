@@ -54,12 +54,11 @@ function FocusSettingsDialog({ open, onClose, settings }: { open: boolean; onClo
   </DialogContent></Dialog>;
 }
 
-function FocusDial({ phase, duration, remaining, status, round, length, fullscreenControl }: { phase: FocusPhase; duration: number; remaining: number; status?: FocusSession["status"]; round: number; length: number; fullscreenControl: ReactNode }) {
+function FocusDial({ phase, duration, remaining, status, round, length }: { phase: FocusPhase; duration: number; remaining: number; status?: FocusSession["status"]; round: number; length: number }) {
   const fraction = duration ? Math.min(1, Math.max(0, 1 - remaining / duration)) : 0;
   const circumference = 2 * Math.PI * 139;
   const label = status === "paused" ? "已暂停" : status === "completed" ? "这一轮完成了" : status === "ended" ? "本轮已结束" : phaseLabels[phase];
   return <div className={`focus-dial ${phase !== "focus" ? "is-break" : ""} ${status === "completed" ? "is-finished" : ""}`}>
-    {fullscreenControl}
     <div className="focus-crown" aria-hidden="true" />
     <div className="focus-dial-face">
       <svg className="focus-dial-marks" viewBox="0 0 340 340" aria-hidden="true">
@@ -145,10 +144,11 @@ export function FocusPanel() {
     {error && <div className="error-banner" role="alert"><span>{error}</span><Button size="sm" variant="outline" onClick={() => void useFocusStore.getState().refresh()}>重新连接</Button></div>}
     <div className={`focus-layout ${confirming ? "is-confirming" : ""}`}>
       <section className="focus-timer-card panel" aria-label="番茄计时器">
+        {fullscreenControl}
         <div className="focus-mobile-task"><label className="sr-only" htmlFor="focus-mobile-task">关联任务</label><select id="focus-mobile-task" className="field" value={session && !finished ? session.task_id || "" : taskId} disabled={!!session && !finished || busy} onChange={event => setTaskId(event.target.value)}><option value="">自由专注</option>{tasks.filter(task => !task.is_done || task.id === session?.task_id).map(task => <option key={task.id} value={task.id}>{task.name}</option>)}</select></div>
         <div className="focus-phase-tabs" role="group" aria-label="计时模式">{(Object.keys(phaseLabels) as FocusPhase[]).map(value => <button key={value} aria-pressed={activePhase === value} disabled={!!session && (!finished || confirming)} className={activePhase === value ? "selected" : ""} onClick={() => setPhase(value)}>{phaseLabels[value]}</button>)}</div>
         <p className="focus-fullscreen-task-name" title={session?.task_name || linkedTask?.name || "自由专注"}>{session?.task_name || linkedTask?.name || "自由专注"}</p>
-        <FocusDial fullscreenControl={fullscreenControl} phase={activePhase} duration={duration} remaining={displayRemaining} status={session && (!finished || confirming) ? session.status : undefined} round={round} length={session && (!finished || confirming) ? session.cycle_length : settings.long_break_interval} />
+        <FocusDial phase={activePhase} duration={duration} remaining={displayRemaining} status={session && (!finished || confirming) ? session.status : undefined} round={round} length={session && (!finished || confirming) ? session.cycle_length : settings.long_break_interval} />
         <div className="focus-main-controls">{confirming ? <span className="focus-awaiting"><Check size={16} />确认成果，收好这一段时间</span> : session && !finished ? <><Button className="focus-primary-control" disabled={busy} onClick={() => void control(session.status === "running" ? "pause" : "resume")}>{session.status === "running" ? <Pause size={17} /> : <Play size={17} />}{session.status === "running" ? "暂停" : session.phase === "focus" ? "继续专注" : "继续休息"}</Button><button className="icon-button focus-stop" disabled={busy} onClick={() => setEndOpen(true)} aria-label={session.phase === "focus" ? "结束本轮" : "跳过休息"} title={session.phase === "focus" ? "结束本轮" : "跳过休息"}><Square size={16} /></button></> : <Button className="focus-primary-control" disabled={busy || !data} onClick={() => void start()}><Play size={17} />{session?.phase !== "focus" && finished ? "开始下一轮" : activePhase === "focus" ? "开始专注" : "开始休息"}</Button>}</div>
         <p className="focus-under-clock">{confirming ? `本轮累计 ${durationText(session.elapsed_seconds)}` : session?.status === "paused" ? "暂停时不累计专注时长" : session && !finished ? session.phase === "focus" ? `正在专注 · ${session.task_name}` : "休息结束后，由你开始下一轮" : "准备好了，就从现在开始"}</p>
       </section>
