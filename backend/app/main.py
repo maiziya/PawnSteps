@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import engine, get_session
-from app.routers import admin, auth, focus, profile, tracker
+from app.routers import admin, auth, focus, profile, review, tracker
 from app.services.accounts import health
 
 logger = logging.getLogger(__name__)
@@ -79,6 +79,7 @@ async def health_check(session: AsyncSession = Depends(get_session)):
 app.include_router(auth.router)
 app.include_router(tracker.router)
 app.include_router(focus.router)
+app.include_router(review.router)
 app.include_router(profile.router)
 app.include_router(admin.router)
 
