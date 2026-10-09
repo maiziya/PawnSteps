@@ -7,7 +7,8 @@ export function useFocusFullscreen(root: RefObject<HTMLDivElement | null>) {
   const [fullscreen, setFullscreen] = useState(false);
   const [transitioning, setTransitioning] = useState(false);
   const active = useRef(false), nativeOwned = useRef(false), entering = useRef(false), mounted = useRef(true);
-  const toggleButton = useRef<HTMLButtonElement>(null);
+  const visibleToggle = useCallback(() => [...(root.current?.querySelectorAll<HTMLButtonElement>('[data-focus-fullscreen-toggle]') || [])]
+    .find(button => button.getClientRects().length && getComputedStyle(button).visibility !== "hidden"), [root]);
 
   const closePresentation = useCallback(() => { active.current = false; setFullscreen(false); }, []);
   const exit = useCallback(async () => {
@@ -80,8 +81,9 @@ export function useFocusFullscreen(root: RefObject<HTMLDivElement | null>) {
     const previousInert = new Map([...chrome, ...siblings].map(element => [element, element.inert]));
     for (const element of previousInert.keys()) element.inert = true;
     body.style.overflow = "hidden"; body.dataset.focusFullscreen = "true";
-    if (toggleButton.current?.disabled) root.current?.focus({ preventScroll: true });
-    else toggleButton.current?.focus({ preventScroll: true });
+    const trigger = visibleToggle();
+    if (trigger?.disabled) root.current?.focus({ preventScroll: true });
+    else trigger?.focus({ preventScroll: true });
     return () => {
       body.style.overflow = previousOverflow;
       if (previousFlag === undefined) delete body.dataset.focusFullscreen; else body.dataset.focusFullscreen = previousFlag;
@@ -89,10 +91,10 @@ export function useFocusFullscreen(root: RefObject<HTMLDivElement | null>) {
       requestAnimationFrame(() => {
         if (!root.current?.isConnected || active.current) return;
         window.scrollTo({ ...scroll, behavior: "instant" });
-        if (!openDialog()) toggleButton.current?.focus({ preventScroll: true });
+        if (!openDialog()) visibleToggle()?.focus({ preventScroll: true });
       });
     };
-  }, [fullscreen, root]);
+  }, [fullscreen, root, visibleToggle]);
 
-  return { fullscreen, transitioning, toggle, exit, toggleButton };
+  return { fullscreen, transitioning, toggle, exit };
 }
