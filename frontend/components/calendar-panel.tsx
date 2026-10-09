@@ -29,6 +29,23 @@ function activityLabel(entry: HistoryEntry) {
 const statusLabels = { recorded: '有进度', partial: '未达标', met: '已达标', exceeded: '超额完成' };
 const weekDays = ["一", "二", "三", "四", "五", "六", "日"];
 
+function ActivityRow({ entry }: { entry: HistoryEntry }) {
+  const status = activityStatus(entry);
+  const hasMinimum = Boolean(entry.quota && entry.quota > 0);
+  const quantity = hasMinimum ? `${entry.amount} / ${entry.quota} ${entry.unit}` : `${entry.amount} ${entry.unit}`;
+  const detail = status === 'partial' ? `还差 ${entry.quota! - entry.amount} ${entry.unit}`
+    : status === 'exceeded' ? `超额 ${entry.amount - entry.quota!} ${entry.unit}`
+    : status === 'met' ? '已达标' : '已记录';
+  return <li>
+    <span className={`calendar-complete-check activity-${status}`} aria-hidden="true">{status === 'met' || status === 'exceeded' ? <Check size={14} /> : <Circle size={7} fill="currentColor" />}</span>
+    <strong className="calendar-entry-name" title={entry.task_name}>{entry.task_name}</strong>
+    <div className="calendar-entry-progress" title={activityLabel(entry)}>
+      <span className="sr-only">{activityLabel(entry)}</span>
+      <div aria-hidden="true"><span className="calendar-entry-quantity">{quantity}</span><span className={`calendar-entry-status activity-${status}`}>{detail}</span></div>
+    </div>
+  </li>;
+}
+
 export function CalendarPanel() {
   const tasks = useAppStore(state => state.tasks);
   const streak = useAppStore(state => state.stats.streak);
@@ -113,7 +130,7 @@ export function CalendarPanel() {
         </tbody></table>
         <div className="calendar-legend"><span><i className="activity-partial" />有进度</span><span><i />已达标</span><span><i className="activity-exceeded" />超额完成</span><span>无圆点：未记录</span></div>
       </div>
-      <aside className="calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3></div>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : selectedEntries.length ? <ul className="calendar-completed-list">{selectedEntries.map(entry => <li key={entry.task_id}><span className={`calendar-complete-check activity-${activityStatus(entry)}`}>{['met', 'exceeded'].includes(activityStatus(entry)) ? <Check size={15} /> : <Circle size={9} fill="currentColor" />}</span><div><strong>{entry.task_name}</strong><span className={`calendar-activity-label activity-${activityStatus(entry)}`}>{activityLabel(entry)}</span></div></li>)}</ul> : <div className="calendar-detail-empty"><CalendarDays size={24} strokeWidth={1.2} /><p>{restDays.has(selectedDay) ? "这一天是休息日，不计漏打卡" : "这一天还没有任务进度"}</p></div>}</aside>
-    </div> : <div className="calendar-list-panel panel" aria-busy={loading}>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : recordedDays.length ? recordedDays.map(day => <section className="calendar-list-day" key={day}><button type="button" className="calendar-list-date" onClick={() => { setSelectedDay(day); setView("calendar"); }}><strong>{new Date(`${day}T12:00:00`).getDate()}</strong><span>{new Date(`${day}T12:00:00`).toLocaleDateString("zh-CN", { weekday: "long" })}</span><small>{byDay[day].length} 项任务</small></button><ul className="calendar-completed-list">{byDay[day].map(entry => <li key={entry.task_id}><span className={`calendar-complete-check activity-${activityStatus(entry)}`}>{['met', 'exceeded'].includes(activityStatus(entry)) ? <Check size={15} /> : <Circle size={9} fill="currentColor" />}</span><div><strong>{entry.task_name}</strong><span className={`calendar-activity-label activity-${activityStatus(entry)}`}>{activityLabel(entry)}</span></div></li>)}</ul></section>) : <div className="calendar-detail-empty"><CalendarDays size={38} strokeWidth={1.2} /><h3>这个月的故事，等你来写</h3><p className="muted">记录一次任务进度，就会出现在这里。</p></div>}</div>}
+      <aside className="calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3></div>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : selectedEntries.length ? <ul className="calendar-completed-list">{selectedEntries.map(entry => <ActivityRow key={entry.task_id} entry={entry} />)}</ul> : <div className="calendar-detail-empty"><CalendarDays size={24} strokeWidth={1.2} /><p>{restDays.has(selectedDay) ? "这一天是休息日，不计漏打卡" : "这一天还没有任务进度"}</p></div>}</aside>
+    </div> : <div className="calendar-list-panel panel" aria-busy={loading}>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : recordedDays.length ? recordedDays.map(day => <section className="calendar-list-day" key={day}><button type="button" className="calendar-list-date" onClick={() => { setSelectedDay(day); setView("calendar"); }}><strong>{new Date(`${day}T12:00:00`).getDate()}</strong><span>{new Date(`${day}T12:00:00`).toLocaleDateString("zh-CN", { weekday: "long" })}</span><small>{byDay[day].length} 项任务</small></button><ul className="calendar-completed-list">{byDay[day].map(entry => <ActivityRow key={entry.task_id} entry={entry} />)}</ul></section>) : <div className="calendar-detail-empty"><CalendarDays size={38} strokeWidth={1.2} /><h3>这个月的故事，等你来写</h3><p className="muted">记录一次任务进度，就会出现在这里。</p></div>}</div>}
   </section>;
 }
