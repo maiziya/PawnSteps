@@ -100,6 +100,18 @@ class TaskSchedule(Base):
     task: Mapped['Task'] = relationship(back_populates='schedules')
 
 
+class DayPlanItem(Base):
+    __tablename__ = 'day_plan_items'
+    __table_args__ = (
+        UniqueConstraint('owner_id', 'date', 'task_id', name='uq_day_plan_owner_date_task'),
+        CheckConstraint('position >= 0 AND position <= 2', name='ck_day_plan_position'),
+    )
+    owner_id: Mapped[str] = mapped_column(ForeignKey('owners.id', ondelete='CASCADE'), primary_key=True)
+    date: Mapped[DateValue] = mapped_column(Date, primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('tasks.id', ondelete='CASCADE'), index=True)
+
+
 class DailyHistory(Base):
     __tablename__ = 'daily_history'
     task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('tasks.id', ondelete='CASCADE'), primary_key=True)

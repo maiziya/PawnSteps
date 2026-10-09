@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
@@ -23,6 +24,12 @@ async def session_factory():
     database_url = os.environ.get("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
     options = {"poolclass": StaticPool} if database_url.startswith("sqlite") else {}
     engine = create_async_engine(database_url, **options)
+    if database_url.startswith("sqlite"):
+        @event.listens_for(engine.sync_engine, "connect")
+        def enable_foreign_keys(connection, _):
+            cursor = connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -76,7 +83,11 @@ def frozen_day(monkeypatch):
 def assert_mutation(response, status: int = 200) -> dict:
     assert response.status_code == status, response.text
     result = response.json()
-    assert {"tasks", "rewards", "stats", "unlocked_reward"} <= result.keys()
+    assert {"tasks", "rewards", "stats", "unlocked_reward", "today_plan"} <= result.keys()
+    assert result["today_plan"]["date"] == result["today"]
+    task_ids = result["today_plan"]["task_ids"]
+    assert len(task_ids) <= 3
+    assert len(set(task_ids)) == len(task_ids)
     assert {"total", "completed", "in_progress", "xp", "streak"} <= result["stats"].keys()
     return result
 

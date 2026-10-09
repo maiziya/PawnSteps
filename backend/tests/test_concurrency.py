@@ -53,3 +53,41 @@ async def test_simultaneous_record_retries_apply_once(client, guest_headers, pos
     final = assert_mutation(await client.get("/api/state", headers=guest_headers))
     assert final["tasks"][0]["progress"] == 2
     assert final["tasks"][0]["record_count"] == 1
+
+
+async def test_simultaneous_day_plan_replacements_are_atomic_without_local_lock(
+    client, guest_headers, frozen_day, session_factory, postgres_only, monkeypatch
+):
+    from sqlalchemy import select
+
+    from app.models import DayPlanItem
+    from app.services import tracker
+
+    tasks = [await create_task(client, guest_headers, name=f"Choice {index}") for index in range(4)]
+    proposals = [
+        [tasks[0]["id"], tasks[1]["id"], tasks[2]["id"]],
+        [tasks[3]["id"], tasks[2]["id"], tasks[0]["id"]],
+        [tasks[1]["id"], tasks[3]["id"], tasks[2]["id"]],
+    ]
+
+    class IndependentWorkerLocks:
+        def setdefault(self, owner_id, lock):
+            return lock
+
+    # Emulate workers with separate Python locks so owner row locking is exercised.
+    monkeypatch.setattr(tracker, "_locks", IndependentWorkerLocks())
+    responses = await asyncio.gather(*[
+        client.put("/api/day-plan", headers=guest_headers,
+                   json={"date": frozen_day["date"].isoformat(), "task_ids": ids})
+        for ids in proposals
+    ])
+    for response, ids in zip(responses, proposals):
+        assert assert_mutation(response)["today_plan"]["task_ids"] == ids
+    final = assert_mutation(await client.get("/api/day-plan", headers=guest_headers))
+    assert final["today_plan"]["task_ids"] in proposals
+    async with session_factory() as session:
+        rows = (await session.scalars(select(DayPlanItem).where(
+            DayPlanItem.owner_id == f"guest:{guest_headers['X-Guest-Id']}",
+            DayPlanItem.date == frozen_day["date"]).order_by(DayPlanItem.position))).all()
+        assert [row.position for row in rows] == [0, 1, 2]
+        assert [str(row.task_id) for row in rows] == final["today_plan"]["task_ids"]

@@ -278,12 +278,31 @@ class Stats(BaseModel):
     today_total: int
 
 
+class DayPlanUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    date: date
+    task_ids: list[UUID] = Field(max_length=3)
+
+    @field_validator('task_ids')
+    @classmethod
+    def unique_tasks(cls, value: list[UUID]) -> list[UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError('Task IDs must be unique')
+        return value
+
+
+class DayPlanOut(BaseModel):
+    date: date
+    task_ids: list[UUID]
+
+
 class MutationResponse(BaseModel):
     today: date
     timezone: str
     tasks: list[TaskOut]
     rewards: list[RewardOut]
     stats: Stats
+    today_plan: DayPlanOut
     unlocked_reward: RewardOut | None = None
     undo_token: str | None = None
     record: ProgressRecordOut | None = None

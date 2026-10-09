@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_owner_id
 from app.database import get_session
-from app.schemas import CourseUpdate, HistoryResponse, MutationResponse, ProgressDecrement, ProgressRecordCreate, ProgressRecordList, ProgressRecordPatch, Reorder, RewardCreate, RewardPatch, TaskCreate, TaskPatch, UndoRequest
+from app.schemas import CourseUpdate, DayPlanUpdate, HistoryResponse, MutationResponse, ProgressDecrement, ProgressRecordCreate, ProgressRecordList, ProgressRecordPatch, Reorder, RewardCreate, RewardPatch, TaskCreate, TaskPatch, UndoRequest
 from app.services import tracker
 
 
@@ -18,9 +18,16 @@ OwnerId = Annotated[str, Depends(get_owner_id)]
 @router.get('/state', response_model=MutationResponse)
 @router.get('/tasks', response_model=MutationResponse)
 @router.get('/rewards', response_model=MutationResponse)
+@router.get('/day-plan', response_model=MutationResponse)
 async def state(session: Session, owner_id: OwnerId):
     async with tracker.owner_transaction(session, owner_id):
         return await tracker.snapshot(session, owner_id)
+
+
+@router.put('/day-plan', response_model=MutationResponse)
+async def set_day_plan(body: DayPlanUpdate, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await tracker.set_day_plan(session, owner_id, body)
 
 
 @router.get('/history', response_model=HistoryResponse)

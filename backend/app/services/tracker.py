@@ -16,10 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import DailyHistory, Owner, ProgressAdjustment, ProgressRecord, Reward, Task, TaskSchedule
-from app.schemas import CourseUpdate, ProgressRecordCreate, ProgressRecordOut, ProgressRecordPatch, RewardCreate, RewardOut, RewardPatch, ScheduleConfig, TaskCreate, TaskOut, TaskPatch
+from app.schemas import CourseUpdate, DayPlanUpdate, ProgressRecordCreate, ProgressRecordOut, ProgressRecordPatch, RewardCreate, RewardOut, RewardPatch, ScheduleConfig, TaskCreate, TaskOut, TaskPatch
 
 
-from app.services import schedules
+from app.services import day_plan, schedules
 
 
 MILESTONES = (3, 7, 14, 30, 60, 100)
@@ -264,11 +264,19 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
     return {
         'today': day,
         'timezone': settings.timezone,
+        'today_plan': await day_plan.projection(session, owner_id, day),
         'tasks': [TaskOut.model_validate(task) for task in sorted(tasks, key=lambda task: (task.is_done, task.position, task.created_at))],
         'rewards': [RewardOut.model_validate(reward) for reward in sorted(rewards, key=lambda reward: reward.position)],
         'stats': {'total': len(tasks), 'completed': completed, 'in_progress': len(tasks) - completed, 'xp': completed * 100, 'streak': streak, 'today_completed': sum(task.daily_done for task in daily_tasks), 'today_total': len(daily_tasks)},
         'unlocked_reward': RewardOut.model_validate(unlocked) if unlocked else None,
     }
+
+
+async def set_day_plan(session: AsyncSession, owner_id: str, body: DayPlanUpdate) -> dict:
+    state = await snapshot(session, owner_id)
+    await day_plan.replace(session, owner_id, state['today'], body, state['tasks'])
+    state['today_plan'] = await day_plan.projection(session, owner_id, state['today'])
+    return state
 
 
 async def _unique_name(session: AsyncSession, owner_id: str, name: str, except_id: UUID | None = None) -> None:
