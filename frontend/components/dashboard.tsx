@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
-import { ArrowRight, BookOpen, CalendarDays, ChartNoAxesCombined, Check, ChevronDown, CircleHelp, Flag, Footprints, Gift, LayoutDashboard, Moon, Plus, RefreshCw, Search, Sun, TrendingUp, Timer, UserRound, Volume2, VolumeX, X } from "lucide-react";
+import { ArrowRight, BookOpen, CalendarDays, CalendarCheck2, ChartNoAxesCombined, Check, ChevronDown, CircleHelp, Flag, Footprints, Gift, LayoutDashboard, Moon, Plus, RefreshCw, Search, Sun, TrendingUp, Timer, UserRound, Volume2, VolumeX, X } from "lucide-react";
 import { Toaster } from "sonner";
 import Link from "next/link";
+import { ApiError, ownerIdentity } from "@/lib/api";
+import { DayPlanPicker } from "./day-plan-picker";
 import { useAppStore } from "@/lib/store";
 import { primeAudio } from "@/lib/audio";
 import type { Task } from "@/lib/types";
@@ -37,10 +39,12 @@ const navigation = [
 type View = typeof navigation[number]["id"];
 
 export function Dashboard() {
-  const { tasks, rewards, stats, user, timezone, loading, busy, error, dark, muted, unlocked, quickFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
+  const { tasks, rewards, stats, user, timezone, todayPlan, loading, busy, error, dark, muted, unlocked, quickFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
   const [view, setView] = useState<View>("tasks");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
+  const [planPickerOpen, setPlanPickerOpen] = useState(false);
+  const [pendingPlanOrder, setPendingPlanOrder] = useState<{ date: string; ids: string[] } | null>(null);
   const [pendingOrder, setPendingOrder] = useState<string[] | null>(null);
   const pendingOrderRef = useRef<string[] | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -55,6 +59,7 @@ export function Dashboard() {
   const [recordTaskId, setRecordTaskId] = useState<string | null>(null);
   const courseOpener = useRef<HTMLElement | null>(null);
   const openedCourseId = useRef<string | null>(null);
+  const courseFocusReturn = useRef<{ taskId: string; owner: string; date: string; anchor: HTMLElement } | null>(null);
   const completedToggle = useRef<HTMLButtonElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const previousQuickHolds = useRef<Set<string>>(new Set());
@@ -63,7 +68,7 @@ export function Dashboard() {
 
   useEffect(() => {
     void initialize();
-    const fromHash = () => { const next = location.hash.slice(1); if (navigation.some(item => item.id === next)) setView(next as View); };
+    const fromHash = () => { const next = location.hash.slice(1); if (next === "today") { setView("tasks"); setFilter("today"); } else if (navigation.some(item => item.id === next)) setView(next as View); };
     fromHash(); window.addEventListener("hashchange", fromHash);
     const timer = setInterval(() => { if (!document.hidden) void refresh(); }, 60_000);
     const onVisible = () => { if (!document.hidden) void refresh(); };
@@ -92,22 +97,24 @@ export function Dashboard() {
   useEffect(() => { if (query.trim()) setShowRest(true); }, [query]);
 
   const hasTasks = tasks.length > 0;
-  const visible = tasks.filter(task => task.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || (filter === "daily" && (task.daily_quota > 0 || task.daily_minimum > 0 || task.daily_plan !== null)) || (filter === "course" && task.course_items !== null) || (filter === "done" && task.is_done)));
+  const planIds = pendingPlanOrder?.date === todayPlan.date ? pendingPlanOrder.ids : todayPlan.task_ids;
+  const planPositions = new Map(planIds.map((id, index) => [id, index]));
+  const visible = tasks.filter(task => task.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || (filter === "today" && planPositions.has(task.id)) || (filter === "daily" && (task.daily_quota > 0 || task.daily_minimum > 0 || task.daily_plan !== null)) || (filter === "course" && task.course_items !== null) || (filter === "done" && task.is_done)));
   const quickHolds = new Set(tasks.filter(task => {
     const feedback = quickFeedback[task.id];
     return filter !== "done" && task.is_done && feedback && feedback.phase !== "failed" && (feedback.keepVisible || (!feedback.wasComplete && feedback.previousProgress < task.target));
   }).map(task => task.id));
   const quickFeedbackVisible = Object.values(quickFeedback).some(feedback => feedback.phase !== "failed");
-  const optimisticPositions = new Map((pendingOrder || []).map((id, index) => [id, index]));
-  const isRest = (task: Task) => !task.is_done && task.schedule.mode !== 'daily' && !task.is_scheduled_today && !task.daily_done && task.today_amount === 0;
+  const optimisticPositions = new Map((filter === "today" ? planIds : pendingOrder || []).map((id, index) => [id, index]));
+  const isRest = (task: Task) => filter !== "today" && !task.is_done && task.schedule.mode !== 'daily' && !task.is_scheduled_today && !task.daily_done && task.today_amount === 0;
   const resting = visible.filter(isRest).sort((a, b) => (optimisticPositions.get(a.id) ?? a.position) - (optimisticPositions.get(b.id) ?? b.position) || a.created_at.localeCompare(b.created_at));
   const restExpanded = showRest;
   const active = visible.filter(task => (!task.is_done || quickHolds.has(task.id)) && !isRest(task)).sort((a, b) => (optimisticPositions.get(a.id) ?? a.position) - (optimisticPositions.get(b.id) ?? b.position) || a.created_at.localeCompare(b.created_at));
-  const done = visible.filter(task => task.is_done && !quickHolds.has(task.id));
+  const done = visible.filter(task => task.is_done && !quickHolds.has(task.id)).sort((a, b) => filter === "today" ? (planPositions.get(a.id) ?? 0) - (planPositions.get(b.id) ?? 0) : 0);
   const completedExpanded = showCompleted || filter === "done";
   const nextMilestone = rewards.filter(reward => reward.streak_target !== null && reward.streak_target > stats.streak).sort((a, b) => a.streak_target! - b.streak_target!)[0];
   const course = tasks.find(task => task.id === courseId && task.course_items !== null);
-  const newTask = (kind: TaskKind = "normal") => { setEditing(null); setInitialKind(kind); setFilter("all"); setQuery(""); setFormOpen(true); };
+  const newTask = (kind: TaskKind = "normal") => { setEditing(null); setInitialKind(kind); setFilter("all"); history.replaceState(null, "", "#tasks"); setQuery(""); setFormOpen(true); };
   const editTask = (task: Task) => { setEditing(task); setFormOpen(true); };
   const openCourse = (id: string) => {
     courseOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -122,7 +129,7 @@ export function Dashboard() {
       const focused = document.activeElement as HTMLElement | null;
       const focusedTask = focused?.closest<HTMLElement>('[data-quick-task]')?.dataset.quickTask;
       if (focused === document.body || (focusedTask && released.includes(focusedTask))) {
-        requestAnimationFrame(() => completedToggle.current?.focus({ preventScroll: true }));
+        requestAnimationFrame(() => (filter === "today" ? document.getElementById("today-plan-done-heading") : completedToggle.current)?.focus({ preventScroll: true }));
       }
     }
   }, [quickFeedback, tasks, filter, recordTaskId, courseId, unlocked]);
@@ -131,23 +138,45 @@ export function Dashboard() {
     if (courseId && !course) setCourseId(null);
   }, [courseId, course]);
 
+  useEffect(() => {
+    const pending = courseFocusReturn.current;
+    if (!pending) return;
+    const task = tasks.find(item => item.id === pending.taskId);
+    if (pending.owner !== ownerIdentity() || pending.date !== todayPlan.date || view !== "tasks" || filter !== "today" || courseId || recordTaskId || planPickerOpen || unlocked || !task || !todayPlan.task_ids.includes(pending.taskId)) {
+      courseFocusReturn.current = null; return;
+    }
+    if (!task.is_done) {
+      if (!busy) courseFocusReturn.current = null;
+      return;
+    }
+    courseFocusReturn.current = null;
+    // A late course save replaces the focused unfinished card after its drawer closes.
+    const stillReturning = () => document.activeElement === pending.anchor || document.activeElement === document.body && !pending.anchor.isConnected;
+    if (stillReturning()) requestAnimationFrame(() => {
+      if (stillReturning()) document.querySelector<HTMLElement>(`.today-plan-done [data-course-trigger="${pending.taskId}"]`)?.focus({ preventScroll: true });
+    });
+  }, [tasks, busy, view, filter, courseId, recordTaskId, planPickerOpen, unlocked, todayPlan]);
+
   async function reorder(event: DragEndEvent) {
     if (!event.over || event.active.id === event.over.id || busy || pendingOrderRef.current) return;
-    const ids = tasks.filter(task => !task.is_done).map(task => task.id);
+    const isPlanOrder = filter === "today", owner = ownerIdentity(), planDate = todayPlan.date;
+    const ids = isPlanOrder ? todayPlan.task_ids : tasks.filter(task => !task.is_done).map(task => task.id);
     const from = ids.indexOf(String(event.active.id)), to = ids.indexOf(String(event.over.id));
     if (from < 0 || to < 0) return;
     const nextOrder = arrayMove(ids, from, to);
     const keyboardHandle = event.activatorEvent.type === 'keydown' && document.activeElement instanceof HTMLElement ? document.activeElement : null;
     pendingOrderRef.current = nextOrder;
-    setPendingOrder(nextOrder);
+    if (isPlanOrder) setPendingPlanOrder({ date: planDate, ids: nextOrder }); else setPendingOrder(nextOrder);
     try {
-      await mutate("/tasks/reorder", { ids: nextOrder });
-    } catch {
+      if (isPlanOrder) await mutate("/day-plan", { date: planDate, task_ids: nextOrder }, "PUT", { expectedOwner: owner, feedback: false });
+      else await mutate("/tasks/reorder", { ids: nextOrder });
+    } catch (error) {
+      if (isPlanOrder && error instanceof ApiError && error.status === 409) await refresh();
       // The canonical server order remains available for a failed save.
     } finally {
       if (pendingOrderRef.current === nextOrder) {
         pendingOrderRef.current = null;
-        setPendingOrder(null);
+        setPendingOrder(null); setPendingPlanOrder(null);
         if (keyboardHandle?.isConnected) requestAnimationFrame(() => keyboardHandle.focus({ preventScroll: true }));
       }
     }
@@ -155,8 +184,14 @@ export function Dashboard() {
 
   function changeView(next: View) {
     setView(next);
-    history.replaceState(null, "", `#${next}`);
+    history.replaceState(null, "", next === "tasks" && filter === "today" ? "#today" : `#${next}`);
     window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  function chooseFilter(next: string) {
+    setFilter(next);
+    if (next === "today") { setQuery(""); history.replaceState(null, "", "#today"); }
+    else if (location.hash === "#today") history.replaceState(null, "", "#tasks");
   }
 
   function startFocus(taskId: string) {
@@ -183,7 +218,7 @@ export function Dashboard() {
     <div className="workspace">
       <header className="workspace-header">
         <div className="topbar">
-          <div className="workspace-title"><Footprints size={20} className="mobile-brand" /><h1>{navigation.find(item => item.id === view)?.title}</h1><span className="date-label">{dateLabel}</span></div>
+          <div className="workspace-title"><Footprints size={20} className="mobile-brand" /><h1>{view === "tasks" && filter === "today" ? "今日计划" : navigation.find(item => item.id === view)?.title}</h1><span className="date-label">{dateLabel}</span></div>
           <div className="topbar-actions">
             {view !== "focus" && <FocusMini onClick={() => changeView("focus")} />}
             {view === "tasks" && hasTasks && <div className="search-field desktop-search"><Search size={17} /><Input aria-label="搜索任务" placeholder="搜索任务" value={query} onChange={event => setQuery(event.target.value)} />{query && <button className="icon-button" aria-label="清除搜索" onClick={() => setQuery("")}><X size={15} /></button>}</div>}
@@ -213,26 +248,28 @@ export function Dashboard() {
               ].map(item => <button key={item.kind} className="onboarding-option" aria-label={item.action} onClick={() => newTask(item.kind)}><item.icon size={21} strokeWidth={1.6} /><span><strong>{item.title}</strong><small>{item.description}</small></span><ArrowRight size={18} /></button>)}
             </div>
           </section>}
-          {view === "tasks" && hasTasks && <div className="task-workspace">
+          {view === "tasks" && hasTasks && <div className={`task-workspace ${filter === "today" ? "today-plan-scope" : ""}`}>
             <section className="focus-summary" aria-label="今日概览">
-              <button onClick={() => setFilter("daily")} aria-label="查看每日打卡"><Sun size={17} /><span>今日达标<strong>{stats.today_completed}<small> / {stats.today_total}</small></strong></span></button>
+              <button onClick={() => chooseFilter("daily")} aria-label="查看每日打卡"><Sun size={17} /><span>今日达标<strong>{stats.today_completed}<small> / {stats.today_total}</small></strong></span></button>
               <button onClick={() => changeView("calendar")} aria-label="查看连续打卡记录"><TrendingUp size={17} /><span>连续打卡<strong>{stats.streak}<small> 天</small></strong></span></button>
               <button onClick={() => changeView("rewards")} aria-label="查看下个里程碑"><Gift size={17} /><span>{nextMilestone ? "下个里程碑" : "我的奖励"}<strong>{nextMilestone ? `${nextMilestone.streak_target} 天` : "查看成就"}{nextMilestone && <small className="milestone-distance">还差 {nextMilestone.streak_target! - stats.streak} 天</small>}</strong></span><ArrowRight size={15} className="summary-arrow" /></button>
             </section>
             <section className="task-section" aria-label="任务列表">
-              <div className="task-toolbar"><div className="filter-tabs" role="group" aria-label="筛选任务">{[["all", "全部"], ["daily", "每日打卡"], ["course", "课程学习"], ["done", "已完成"]].map(([id, title]) => <button key={id} aria-pressed={filter === id} onClick={() => setFilter(id)} className={filter === id ? "selected" : ""}>{title}</button>)}</div><span className="task-list-count">{visible.length} 项任务</span></div>
-              {!visible.length && <div className="empty-state"><span className="empty-symbol"><Search size={25} /></span><h2>这里暂时没有匹配的任务</h2><p>换个关键词，或者看看其他分类。</p><Button variant="secondary" onClick={() => { setQuery(""); setFilter("all"); }}>查看全部任务<ArrowRight size={16} /></Button></div>}
+              <div className="task-toolbar"><div className="filter-tabs" role="group" aria-label="筛选任务">{[["all", "全部"], ["today", "今日"], ["daily", "每日打卡"], ["course", "课程学习"], ["done", "已完成"]].map(([id, title]) => <button key={id} aria-label={id === "today" ? "今日计划" : title} aria-pressed={filter === id} onClick={() => chooseFilter(id)} className={filter === id ? "selected" : ""}>{title}</button>)}</div><button className="day-plan-adjust" aria-label="调整今日计划" title="调整今日计划" disabled={busy} onClick={() => setPlanPickerOpen(true)}><CalendarCheck2 size={17} /><span>{filter === "today" ? "调整计划" : "安排今天"}</span></button></div>
+              {filter === "today" && todayPlan.task_ids.length > 0 && <div className="today-plan-caption"><strong>今天最重要的 {todayPlan.task_ids.length} 项</strong><span>最多选 3 项 · 进度沿用原任务</span></div>}
+              {filter === "today" && !todayPlan.task_ids.length ? <div className="today-plan-empty"><CalendarCheck2 size={27} /><h2>今天，先做好几件重要的事</h2><p>从已有任务中挑选 1–3 项，给今天一个清晰的方向。</p><Button variant="secondary" onClick={() => setPlanPickerOpen(true)}>选择今日任务<ArrowRight size={16} /></Button></div> : !visible.length && <div className="empty-state"><span className="empty-symbol"><Search size={25} /></span><h2>这里暂时没有匹配的任务</h2><p>换个关键词，或者看看其他分类。</p><Button variant="secondary" onClick={() => { setQuery(""); chooseFilter("all"); }}>查看全部任务<ArrowRight size={16} /></Button></div>}
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorder}>
                 <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
-                  <div className="task-list"><AnimatePresence initial={false}>{active.map(task => <motion.div key={task.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TaskCard task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} /></motion.div>)}</AnimatePresence></div>
+                  <div className="task-list"><AnimatePresence initial={false}>{active.map(task => <motion.div key={task.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TaskCard task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} focusAction={filter === "today"} /></motion.div>)}</AnimatePresence></div>
                 </SortableContext>
                 {resting.length > 0 && <section className="completed-section">
                   <button className="completed-toggle" aria-label="今日休息的任务" aria-expanded={restExpanded} aria-controls="resting-task-list" onClick={() => setShowRest(value => !value)}><ChevronDown size={17} className={restExpanded ? '' : 'collapsed'} /><Moon size={16} /><span>今日休息</span><span className="completed-count">{resting.length}</span><span className="completed-hint">{restExpanded ? '收起' : '展开查看'}</span></button>
-                  {restExpanded && <SortableContext items={resting.map(task => task.id)} strategy={verticalListSortingStrategy}><div id="resting-task-list" role="region" aria-label="今日休息任务列表" className="task-list">{resting.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} />)}</div></SortableContext>}
+                  {restExpanded && <SortableContext items={resting.map(task => task.id)} strategy={verticalListSortingStrategy}><div id="resting-task-list" role="region" aria-label="今日休息任务列表" className="task-list">{resting.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} focusAction={filter === "today"} />)}</div></SortableContext>}
                 </section>}
-                {done.length > 0 && <section className="completed-section">
+                {filter === "today" && done.length > 0 && <section className="today-plan-done"><h3 id="today-plan-done-heading" tabIndex={-1}>已完成</h3><div className="task-list">{done.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} focusAction />)}</div></section>}
+                {filter !== "today" && done.length > 0 && <section className="completed-section">
                   <button ref={completedToggle} className="completed-toggle" aria-label="已完成任务" aria-expanded={completedExpanded} aria-controls="completed-task-list" onClick={() => { if (filter === "done") { setFilter("all"); setShowCompleted(false); } else setShowCompleted(value => !value); }}><ChevronDown size={17} className={completedExpanded ? "" : "collapsed"} /><Check size={16} /><span>已完成任务</span><span className="completed-count" aria-hidden="true">{done.length}</span><span className="completed-hint" aria-hidden="true">{completedExpanded ? "收起" : "展开查看"}</span></button>
-                  {completedExpanded && <div id="completed-task-list" role="region" aria-label="已完成任务列表" className="task-list">{done.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} />)}</div>}
+                  {completedExpanded && <div id="completed-task-list" role="region" aria-label="已完成任务列表" className="task-list">{done.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} focusAction={filter === "today"} />)}</div>}
                 </section>}
               </DndContext>
             </section>
@@ -248,14 +285,18 @@ export function Dashboard() {
     </div>
 
     <nav className="mobile-nav" aria-label="移动导航">{navigation.filter(item => item.id !== "review").map(item => <button key={item.id} aria-label={item.label} className={view === item.id || view === "review" && item.id === "calendar" ? "active" : ""} onClick={() => changeView(item.id)} aria-current={view === item.id || view === "review" && item.id === "calendar" ? "page" : undefined}><item.icon size={21} />{item.id === "focus" ? <FocusNavLabel /> : <span>{item.label}</span>}</button>)}</nav>
+    <DayPlanPicker open={planPickerOpen} onClose={() => setPlanPickerOpen(false)} onSaved={() => { setPlanPickerOpen(false); setView("tasks"); chooseFilter("today"); }} />
     <TaskForm open={formOpen} onOpenChange={setFormOpen} task={editing} initialKind={initialKind} />
-    <ProgressRecords taskId={recordTaskId} onClose={() => setRecordTaskId(null)} returnFocus={view === "review" ? () => document.getElementById("main-content") : undefined} />
+    <ProgressRecords taskId={recordTaskId} onClose={() => setRecordTaskId(null)} returnFocus={view === "review" || view === "tasks" && filter === "today" ? () => document.getElementById("main-content") : undefined} />
     <Dialog open={Boolean(course)} onOpenChange={open => { if (!open) setCourseId(null); }}>
       <DialogContent className="course-drawer" onCloseAutoFocus={event => {
         event.preventDefault();
         const finished = useAppStore.getState().tasks.find(task => task.id === openedCourseId.current)?.is_done;
-        const target = (finished && !completedExpanded ? completedToggle.current : courseOpener.current?.isConnected ? courseOpener.current : completedToggle.current || addButton.current) || document.getElementById("main-content");
+        const todayCourse = filter === "today" && document.querySelector<HTMLElement>(`${finished ? '.today-plan-done ' : ''}[data-course-trigger="${openedCourseId.current}"]`);
+        const target = (todayCourse || (finished && !completedExpanded ? completedToggle.current : courseOpener.current?.isConnected ? courseOpener.current : completedToggle.current || addButton.current)) || document.getElementById("main-content");
         target?.focus({ preventScroll: true });
+        courseFocusReturn.current = filter === "today" && !finished && useAppStore.getState().busy && openedCourseId.current && target
+          ? { taskId: openedCourseId.current, owner: ownerIdentity(), date: todayPlan.date, anchor: target } : null;
       }}>
         {course && <>
           <div className="course-drawer-header"><span className="course-drawer-eyebrow"><BookOpen size={16} />课程学习{(course.daily_goal || course.daily_minimum) > 0 && <span className={`course-daily-summary ${course.daily_done ? 'is-met' : ''}`} title={`每天最少 ${course.daily_minimum} 节，目标 ${course.daily_goal ?? course.daily_minimum} 节`}>今日 {course.today_amount} / {course.daily_goal ?? course.daily_minimum} 节{course.daily_done ? ' · 已达标' : ''}</span>}</span><DialogTitle>{course.name}</DialogTitle><DialogDescription className={course.description ? undefined : "sr-only"}>{course.description || "逐项勾选课程，记录学习进度。"}</DialogDescription><div className="course-drawer-progress"><span>{course.is_done ? "课程已完成" : "学习进度"}</span><strong>{course.progress} / {course.target} 节</strong></div><div className="course-progress-track"><span style={{ width: `${course.target ? course.progress / course.target * 100 : 0}%` }} /></div></div>
@@ -264,7 +305,7 @@ export function Dashboard() {
         </>}
       </DialogContent>
     </Dialog>
-    <Dialog open={Boolean(unlocked) && !recordTaskId && !courseId && !formOpen && !quickFeedbackVisible && (!completionUndo || completionUndo.rewardId === unlocked?.id)} onOpenChange={open => { if (!open) dismissUnlock(); }}><DialogContent className="unlock-dialog"><motion.div className="unlock-icon" initial={{ scale: .6, rotate: -10 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", damping: 14 }}><Gift size={52} strokeWidth={1.3} /></motion.div><p className="eyebrow">努力，值得被好好奖励</p><DialogTitle>一个心愿，解锁了。</DialogTitle><DialogDescription>你为「{unlocked?.name}」走过的每一步，都有意义。</DialogDescription>{unlocked?.image_url && <img className="unlock-image" src={unlocked.image_url} alt={unlocked.name} />}<Button onClick={() => { dismissUnlock(); changeView("rewards"); }}>收下这份奖励<Check size={16} /></Button>{completionUndo?.rewardId === unlocked?.id && completionUndo && <Button variant="ghost" disabled={completionUndo.pending || busy} onClick={() => void undoCompletion()}>撤销</Button>}</DialogContent></Dialog>
+    <Dialog open={Boolean(unlocked) && !recordTaskId && !courseId && !formOpen && !planPickerOpen && !quickFeedbackVisible && (!completionUndo || completionUndo.rewardId === unlocked?.id)} onOpenChange={open => { if (!open) dismissUnlock(); }}><DialogContent className="unlock-dialog"><motion.div className="unlock-icon" initial={{ scale: .6, rotate: -10 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", damping: 14 }}><Gift size={52} strokeWidth={1.3} /></motion.div><p className="eyebrow">努力，值得被好好奖励</p><DialogTitle>一个心愿，解锁了。</DialogTitle><DialogDescription>你为「{unlocked?.name}」走过的每一步，都有意义。</DialogDescription>{unlocked?.image_url && <img className="unlock-image" src={unlocked.image_url} alt={unlocked.name} />}<Button onClick={() => { dismissUnlock(); changeView("rewards"); }}>收下这份奖励<Check size={16} /></Button>{completionUndo?.rewardId === unlocked?.id && completionUndo && <Button variant="ghost" disabled={completionUndo.pending || busy} onClick={() => void undoCompletion()}>撤销</Button>}</DialogContent></Dialog>
     <Dialog open={help} onOpenChange={setHelp}><DialogContent><DialogTitle>一步一步，用好 PawnSteps</DialogTitle><DialogDescription>让任务跟着你的节奏走。</DialogDescription><div className="help-content"><p><strong>普通任务：</strong>点击 +1、+5 记录进度，点错用 −1 修正；全部完成时可通过提示撤回最后一笔，其他数量和备注可从记录入口操作。</p><p><strong>每日打卡：</strong>一天可以记录多次，达到每日最低量才计为达标；超额完成不重复累计天数。</p><p><strong>计划任务：</strong>按当天配额记录，0 和 -1 是休息日；到期标记结束，进度保留实际完成量。</p><p><strong>课程学习：</strong>点击“继续学习”打开课程清单；鼠标可从条目或空白处框选。已完成项再框选可取消，Shift + 框选强制取消；完成的条目和章节会变绿。</p><p><strong>打卡日历：</strong>有进度就显示圆点，低于最低量、达标和超额分别展示；未做的日期没有圆点。</p><p><strong>已完成任务：</strong>收在列表底部，展开后可以查看和调整。</p><p className="muted">打卡时区：{timezone}。游客可创建 10 个任务，其中每日或计划任务最多 3 个。</p></div><Button variant="secondary" onClick={toggleMuted}>{muted ? <VolumeX size={17} /> : <Volume2 size={17} />}{muted ? "开启音效" : "静音"}</Button></DialogContent></Dialog>
     <Toaster theme={dark ? "dark" : "light"} position="bottom-right" richColors closeButton />
   </div></MotionConfig>;

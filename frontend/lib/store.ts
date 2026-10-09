@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import { api, ApiError, ownerIdentity } from "@/lib/api";
 import { playSound } from "@/lib/audio";
-import type { MutationResponse, Reward, Stats, Task, User } from "@/lib/types";
+import type { MutationResponse, Reward, Stats, Task, TodayPlan, User } from "@/lib/types";
 
 const emptyStats: Stats = { total: 0, completed: 0, in_progress: 0, xp: 0, streak: 0, today_completed: 0, today_total: 0 };
 export interface QuickFeedback {
@@ -35,7 +35,7 @@ function serial<T>(operation: () => Promise<T>): Promise<T> {
 export interface MutationOptions { expectedOwner?: string; quiet?: boolean; feedback?: boolean; completionHint?: { taskId: string; wasDone: boolean } }
 interface AppState {
   tasks: Task[]; rewards: Reward[]; stats: Stats; user: User | null;
-  today: string; timezone: string;
+  today: string; timezone: string; todayPlan: TodayPlan;
   loading: boolean; busy: boolean; error: string | null; unlocked: Reward | null;
   muted: boolean; dark: boolean;
   quickFeedback: Record<string, QuickFeedback>;
@@ -77,7 +77,7 @@ export const useAppStore = create<AppState>((set, get) => {
     if (receiptInvalid && receipt && !receipt.pending) toast.dismiss(completionToastId(receipt.recordId));
     const pendingUnlock = receiptInvalid && receipt?.rewardId === before.unlocked?.id ? null : before.unlocked;
     set({ tasks: data.tasks, rewards: data.rewards, stats: data.stats, error: null,
-      today: data.today, timezone: data.timezone,
+      today: data.today, timezone: data.timezone, todayPlan: data.today_plan || { date: data.today, task_ids: [] },
       completionUndo: receiptInvalid ? null : receipt, unlocked: unlocked || pendingUnlock,
       ...(data.user ? { user: data.user } : {}) });
     if (!feedback) return;
@@ -94,7 +94,7 @@ export const useAppStore = create<AppState>((set, get) => {
     else if (data.tasks.some(t => before.tasks.some(old => old.id === t.id && (t.progress > old.progress || t.daily_progress > old.daily_progress || t.today_amount > old.today_amount)))) playSound("step");
   }
   return {
-    tasks: [], rewards: [], stats: emptyStats, user: null, today: "", timezone: "Asia/Shanghai", loading: true, busy: false, error: null, unlocked: null, muted: false, dark: false, quickFeedback: {}, completionUndo: null,
+    tasks: [], rewards: [], stats: emptyStats, user: null, today: "", timezone: "Asia/Shanghai", todayPlan: { date: "", task_ids: [] }, loading: true, busy: false, error: null, unlocked: null, muted: false, dark: false, quickFeedback: {}, completionUndo: null,
     initialize: async () => {
       const dark = localStorage.getItem("pawnsteps-theme") === "dark" || (!localStorage.getItem("pawnsteps-theme") && matchMedia("(prefers-color-scheme: dark)").matches);
       document.documentElement.classList.toggle("dark", dark);
@@ -199,7 +199,14 @@ export const useAppStore = create<AppState>((set, get) => {
           return { quickFeedback: next, completionUndo: state.completionUndo?.recordId === receipt.recordId ? null : state.completionUndo };
         });
         toast.success('已撤回最后一笔记录', { id: completionToastId(receipt.recordId), duration: 3000, action: undefined });
-        requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(`[data-record-trigger="${receipt.taskId}"]`)?.focus({ preventScroll: true }));
+        requestAnimationFrame(() => {
+          const target = document.querySelector<HTMLButtonElement>(`[data-record-trigger="${receipt.taskId}"]`);
+          if (!target) return;
+          // Let the toaster restore its previous focus before selecting the restored card.
+          const focused = document.activeElement;
+          if (focused instanceof HTMLElement && focused.closest('[data-sonner-toaster]')) focused.blur();
+          target.focus({ preventScroll: true });
+        });
       } catch {
         if (get().completionUndo?.recordId !== receipt.recordId) {
           toast.error('未能撤回，可在记录历史中重试', { id: completionToastId(receipt.recordId), duration: 4000, action: undefined });
@@ -215,7 +222,7 @@ export const useAppStore = create<AppState>((set, get) => {
       if (receipt) toast.dismiss(completionToastId(receipt.recordId));
       localStorage.removeItem("pawnsteps-token");
       localStorage.removeItem("pawnsteps-guest-id");
-      set({ user: null, tasks: [], rewards: [], stats: emptyStats, unlocked: null, loading: true, quickFeedback: {}, completionUndo: null });
+      set({ user: null, tasks: [], rewards: [], stats: emptyStats, todayPlan: { date: "", task_ids: [] }, unlocked: null, loading: true, quickFeedback: {}, completionUndo: null });
       try { apply(await api<MutationResponse>("/state")); } catch (error) { set({ error: String(error) }); }
       finally { set({ loading: false }); }
     }),

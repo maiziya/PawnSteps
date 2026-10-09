@@ -17,9 +17,10 @@ interface TaskCardProps {
   onOpenCourse: (taskId: string) => void;
   onOpenRecords: (taskId: string) => void;
   onStartFocus: (taskId: string) => void;
+  focusAction?: boolean;
 }
 
-export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFocus }: TaskCardProps) {
+export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFocus, focusAction = false }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: task.is_done });
   const mutate = useAppStore(state => state.mutate);
   const busy = useAppStore(state => state.busy);
@@ -90,7 +91,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
             {!task.is_done && <button type="button" {...attributes} {...listeners} disabled={busy} className="icon-button compact-task-button compact-task-drag" aria-label={`拖动排序${task.name}`} title="拖动排序"><GripVertical size={17} /></button>}
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
-                <button type="button" className="icon-button compact-task-button" aria-label={`任务操作：${task.name}`} title="任务操作"><MoreHorizontal size={20} /></button>
+                <button type="button" className="icon-button compact-task-button" data-record-trigger={focusAction && !task.is_done ? task.id : undefined} aria-label={`任务操作：${task.name}`} title="任务操作"><MoreHorizontal size={20} /></button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
                 <DropdownMenu.Content className="task-action-menu" align="end" sideOffset={6} collisionPadding={12}>
@@ -113,7 +114,8 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
               <div className="compact-progress-fill is-complete" style={{ width: `${task.target ? task.progress / task.target * 100 : 0}%` }} />
             </div>
           </div>
-          <button type="button" className="compact-course-open" aria-label={`${task.name}${task.is_done ? '查看课程' : '继续学习'}`} onClick={() => onOpenCourse(task.id)}>{task.is_done ? '查看课程' : '继续学习'}<ArrowRight size={16} /></button>
+          {focusAction && !task.is_done && <button type="button" className="compact-history-button" disabled={busy} aria-label={`${task.name}开始专注`} title="开始专注" onClick={() => onStartFocus(task.id)}><Timer size={17} /></button>}
+          <button type="button" className="compact-course-open" data-course-trigger={task.id} aria-label={`${task.name}${task.is_done ? '查看课程' : '继续学习'}`} onClick={() => onOpenCourse(task.id)}>{task.is_done ? '查看课程' : '继续学习'}<ArrowRight size={16} /></button>
         </div> : <div className={`compact-quick-progress ${task.is_done ? 'is-readonly' : ''}`}>
           <div className="compact-course-meter">
             <div className="compact-course-meter-label"><span>{meterCaption}</span><span title={meterLabel}>{meterLabel}</span></div>
@@ -130,7 +132,8 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
             })}
             </div>}
             {task.is_done && feedback?.phase === 'failed' && <button type="button" className="compact-history-button with-label" disabled={busy || saving} aria-label={`${task.name}重试确认`} onClick={() => void record(feedback.amount)}>重试确认</button>}
-            <button type="button" className="compact-history-button" disabled={busy || saving} data-record-trigger={task.id} aria-label={`${task.name}查看记录`} title={task.is_done ? '查看或修正记录' : '查看记录或填写其他完成量'} onClick={() => onOpenRecords(task.id)}><History size={17} /></button>
+            {focusAction && !task.is_done && <button type="button" className="compact-history-button" disabled={busy || saving} aria-label={`${task.name}开始专注`} title="开始专注" onClick={() => onStartFocus(task.id)}><Timer size={17} /></button>}
+            {(!focusAction || task.is_done) && <button type="button" className="compact-history-button" disabled={busy || saving} data-record-trigger={task.id} aria-label={`${task.name}查看记录`} title={task.is_done ? '查看或修正记录' : '查看记录或填写其他完成量'} onClick={() => onOpenRecords(task.id)}><History size={17} /></button>}
           </div>
         </div>}
 

@@ -28,6 +28,7 @@ export interface User {
   id: string; username: string | null; email: string | null; avatar_url: string | null;
   is_premium: boolean; has_password: boolean; created_at: string;
 }
+export interface TodayPlan { date: string; task_ids: string[] }
 export interface MutationResponse {
   tasks: Task[]; rewards: Reward[]; stats: Stats; unlocked_reward: Reward | null;
   today: string; timezone: string;
@@ -35,6 +36,7 @@ export interface MutationResponse {
   image_url?: string | null; authorization_url?: string | null;
   message?: string | null; retry_after?: number | null;
   record?: ProgressRecord | null;
+  today_plan: TodayPlan;
   focus?: import("./focus-types").FocusState | null;
 }
 export interface HistoryEntry { task_id: string; task_name: string; date: string; completed: boolean; amount: number; unit: string; task_kind: "normal" | "daily" | "plan" | "course"; quota: number | null }
