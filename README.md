@@ -1,5 +1,7 @@
 # PawnSteps · 日拱一卒
 
+![PawnSteps 任务面板（示例数据）](docs/images/pawnsteps-dashboard.png)
+
 习惯养成与目标追踪应用。前后端独立，提供 FastAPI REST API、Next.js 15 页面、浅色/暗色主题和 Docker Compose 部署。
 
 ## 本地运行
