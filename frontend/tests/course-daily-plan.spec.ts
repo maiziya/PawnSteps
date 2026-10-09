@@ -36,7 +36,7 @@ test('course daily minimum and goal persist, qualify a check-in, and can be disa
   await drawer.getByRole('button', { name: '返回任务列表', exact: true }).click();
   await navigate(page, '打卡日历');
   await expect(page.locator('.calendar-day-detail')).toContainText('完成 2 / 2 节 · 已达标');
-  await navigate(page, '我的步履');
+  await navigate(page, '我的任务');
   await taskCard(page, name).getByRole('button', { name: `任务操作：${name}`, exact: true }).click();
   await page.getByRole('menuitem', { name: `编辑${name}`, exact: true }).click();
   const edit = page.getByRole('dialog', { name: '调整你的目标', exact: true });

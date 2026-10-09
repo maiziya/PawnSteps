@@ -8,7 +8,7 @@ test('calendar distinguishes no work, partial, minimum met, and exceeded amounts
   await navigate(page, '打卡日历');
   const today = page.locator('.calendar-day[aria-current="date"]');
   await expect(today.locator('.calendar-day-dots i')).toHaveCount(0);
-  await navigate(page, '我的步履');
+  await navigate(page, '我的任务');
   await taskCard(page, name).getByRole('button', { name: `${name}增加1页`, exact: true }).click();
   await expect(taskCard(page, name).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
   await navigate(page, '打卡日历');
@@ -18,14 +18,14 @@ test('calendar distinguishes no work, partial, minimum met, and exceeded amounts
   expect((await persistedState(page)).stats.streak).toBe(0);
   await page.getByRole('button', { name: '列表', exact: true }).click();
   await expect(page.locator('.calendar-list-panel')).toContainText('完成 1 / 5 页');
-  await navigate(page, '我的步履');
+  await navigate(page, '我的任务');
   await recordProgress(page, name, 4);
   await page.keyboard.press('Escape');
   await navigate(page, '打卡日历');
   await expect(today).toHaveClass(/activity-met/);
   await expect(page.locator('.calendar-day-detail')).toContainText('完成 5 / 5 页 · 已达标');
   expect((await persistedState(page)).stats.streak).toBe(1);
-  await navigate(page, '我的步履');
+  await navigate(page, '我的任务');
   await taskCard(page, name).getByRole('button', { name: `${name}增加1页`, exact: true }).click();
   await expect(taskCard(page, name).getByRole('progressbar')).toHaveAttribute('aria-valuetext', '今日 6 / 5 页');
   await navigate(page, '打卡日历');

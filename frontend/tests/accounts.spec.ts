@@ -38,7 +38,7 @@ test('registration migrates guest data, profile edits persist, export works, and
   await page.getByLabel('密码', { exact: true }).fill(newPassword);
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page.getByRole('button', { name: '退出登录', exact: true })).toBeVisible();
-  await navigate(page, '我的步履');
+  await navigate(page, '我的任务');
   await expect(taskCard(page, taskName)).toBeVisible();
   state = await persistedState(page);
   expect(state.stats.total).toBe(1);

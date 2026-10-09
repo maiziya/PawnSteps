@@ -23,7 +23,7 @@ import { CalendarPanel } from "@/components/calendar-panel";
 import "./workspace.css";
 
 const navigation = [
-  { id: "tasks", label: "我的步履", title: "我的任务", icon: LayoutDashboard },
+  { id: "tasks", label: "我的任务", title: "我的任务", icon: LayoutDashboard },
   { id: "calendar", label: "打卡日历", title: "打卡日历", icon: CalendarDays },
   { id: "rewards", label: "心愿奖励", title: "心愿奖励", icon: Gift },
   { id: "account", label: "个人中心", title: "个人中心", icon: UserRound },
@@ -155,7 +155,7 @@ export function Dashboard() {
     <aside className="sidebar">
       <a href="/" className="brand" aria-label="PawnSteps 首页"><span className="brand-symbol"><Footprints size={23} strokeWidth={2.2} /></span><span>PawnSteps<small>日拱一卒</small></span></a>
       <div className="sidebar-label">日拱一卒，功不唐捐</div>
-      <nav aria-label="主导航">{navigation.map(item => <button key={item.id} onClick={() => changeView(item.id)} className={`nav-item ${view === item.id ? "active" : ""}`} aria-current={view === item.id ? "page" : undefined}><item.icon size={20} /><span>{item.label}</span>{item.id === "tasks" && stats.in_progress > 0 && <span className="nav-count">{stats.in_progress}</span>}</button>)}</nav>
+      <nav aria-label="主导航">{navigation.map(item => <button key={item.id} onClick={() => changeView(item.id)} className={`nav-item ${view === item.id ? "active" : ""}`} aria-current={view === item.id ? "page" : undefined}><item.icon size={20} /><span>{item.label}</span></button>)}</nav>
       <div className="sidebar-bottom">
         <div className="utility-row">
           <button className="icon-button" onClick={toggleTheme} aria-label={dark ? "切换浅色模式" : "切换暗色模式"}>{dark ? <Sun size={19} /> : <Moon size={19} />}</button>

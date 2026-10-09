@@ -17,7 +17,7 @@ async function addLinkedReward(page: Page, name: string) {
   await dialog.getByLabel('奖励名称', { exact: true }).fill(name);
   await dialog.getByRole('button', { name: '添加奖励', exact: true }).click();
   await expect(dialog).toBeHidden();
-  await navigate(page, '我的步履');
+  await navigate(page, '我的任务');
 }
 
 test('card increments save separate records without opening a dialog and survive reload', async ({ page }) => {

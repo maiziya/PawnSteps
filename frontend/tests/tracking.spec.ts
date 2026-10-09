@@ -14,7 +14,7 @@ test('ordinary progress unlocks its reward, updates XP, and deletion can be undo
   await rewardDialog.getByRole('button', { name: '添加奖励', exact: true }).click();
   await expect(rewardDialog).toBeHidden();
   await expect(page.getByRole('heading', { name: rewardName, exact: true })).toBeVisible();
-  await navigate(page, '我的步履');
+  await navigate(page, '我的任务');
   await createTask(page, taskName, { target: 2, reward: rewardName });
   await recordProgress(page, taskName, 1, '先整理目录');
   await page.keyboard.press('Escape');
@@ -29,7 +29,7 @@ test('ordinary progress unlocks its reward, updates XP, and deletion can be undo
   const state = await persistedState(page);
   expect(state.stats.xp).toBe(100);
   expect(state.tasks.find(task => task.name === taskName)?.is_done).toBe(true);
-  await navigate(page, '我的步履');
+  await navigate(page, '我的任务');
   await showCompletedTasks(page);
   await taskCard(page, taskName).getByRole('button', { name: `任务操作：${taskName}`, exact: true }).click();
   await page.getByRole('menuitem', { name: `删除${taskName}`, exact: true }).click();

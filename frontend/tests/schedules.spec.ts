@@ -31,7 +31,7 @@ test('weekday rest tasks fold by default and can be edited back into today', asy
   await navigate(page, '打卡日历');
   await expect(page.locator('.calendar-day[aria-current="date"]')).toHaveClass(/is-rest/);
   await expect(page.locator('.calendar-day-detail')).toContainText('休息日，不计漏打卡');
-  await navigate(page, '我的步履');
+  await navigate(page, '我的任务');
   await taskCard(page, name).getByRole('button', { name: `任务操作：${name}`, exact: true }).click();
   await page.getByRole('menuitem', { name: `编辑${name}`, exact: true }).click();
   await weekdays(form, [today]);

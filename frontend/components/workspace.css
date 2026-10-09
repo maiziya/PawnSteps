@@ -13,7 +13,6 @@ html { scroll-padding-top: 124px; }
 .nav-item { display: flex; align-items: center; gap: 12px; border: 0; background: transparent; color: var(--muted); width: 100%; padding: 12px; border-radius: 10px; text-align: left; }
 .nav-item:hover { background: var(--surface-soft); color: var(--text); }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
-.nav-count { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
 .sidebar-bottom { margin-top: auto; border-top: 1px solid var(--line); }
 .utility-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; padding: 8px 0 0; }
 .sidebar-account { display: flex; gap: 10px; align-items: center; background: transparent; border: 0; text-align: left; width: 100%; padding: 8px 0; }
