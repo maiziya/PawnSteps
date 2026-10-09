@@ -80,6 +80,13 @@
   .compact-quick-progress .compact-course-meter-label { margin-bottom: 6px; }
   .compact-course-open { padding: 0 10px; }
 }
+@media (min-width: 768px) and (pointer: fine) {
+  .compact-stepper { grid-template-columns: repeat(3, minmax(36px, 1fr)); border-radius: 9px; }
+  .compact-stepper::before, .compact-stepper::after { top: 9px; bottom: 9px; }
+  .compact-quick-button { min-width: 36px; min-height: 32px; padding: 0 8px; gap: 2px; border-radius: 5px; font-size: 13px; }
+  .compact-step-sign { font-size: 14px; }
+  .compact-history-button:not(.with-label) { min-width: 32px; min-height: 32px; border-radius: 8px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .compact-progress-fill, .compact-quick-button { transition: none; }
 }
