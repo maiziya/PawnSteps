@@ -2,6 +2,8 @@ from datetime import date, datetime, timezone
 from typing import Annotated, Literal
 from uuid import UUID
 
+from app.focus_schemas import FocusState
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
@@ -285,6 +287,7 @@ class MutationResponse(BaseModel):
     unlocked_reward: RewardOut | None = None
     undo_token: str | None = None
     record: ProgressRecordOut | None = None
+    focus: FocusState | None = None
 
 
 class HistoryEntry(BaseModel):

@@ -143,6 +143,66 @@ class ProgressAdjustment(Base):
     record: Mapped[ProgressRecord] = relationship(back_populates='adjustments')
 
 
+class FocusPreferences(Base):
+    __tablename__ = 'focus_preferences'
+    generation: Mapped[uuid.UUID] = mapped_column(Uuid, default=uuid.uuid4)
+    owner_id: Mapped[str] = mapped_column(ForeignKey('owners.id', ondelete='CASCADE'), primary_key=True)
+    focus_minutes: Mapped[int] = mapped_column(Integer, default=25)
+    short_break_minutes: Mapped[int] = mapped_column(Integer, default=5)
+    long_break_minutes: Mapped[int] = mapped_column(Integer, default=15)
+    long_break_interval: Mapped[int] = mapped_column(Integer, default=4)
+    auto_start_break: Mapped[bool] = mapped_column(Boolean, default=True)
+    rounds_completed: Mapped[int] = mapped_column(Integer, default=0)
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class FocusSession(Base):
+    __tablename__ = 'focus_sessions'
+    __table_args__ = (
+        UniqueConstraint('owner_id', 'active_slot', name='uq_focus_owner_active'),
+        UniqueConstraint('owner_id', 'request_id', name='uq_focus_owner_request'),
+        CheckConstraint("phase IN ('focus', 'short_break', 'long_break')", name='ck_focus_phase'),
+        CheckConstraint("status IN ('running', 'paused', 'completed', 'ended')", name='ck_focus_status'),
+        CheckConstraint('duration_seconds >= 60 AND duration_seconds <= 10800', name='ck_focus_duration'),
+        CheckConstraint('active_slot IS NULL OR active_slot = 1', name='ck_focus_active_slot'),
+        Index('ix_focus_owner_started', 'owner_id', 'started_at'),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[str] = mapped_column(ForeignKey('owners.id', ondelete='CASCADE'))
+    request_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    active_slot: Mapped[int | None] = mapped_column(Integer)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('tasks.id', ondelete='SET NULL'))
+    task_name: Mapped[str] = mapped_column(String(100), default='自由专注')
+    task_unit: Mapped[str] = mapped_column(String(12), default='分钟')
+    is_course: Mapped[bool] = mapped_column(Boolean, default=False)
+    phase: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default='running')
+    duration_seconds: Mapped[int] = mapped_column(Integer)
+    break_seconds: Mapped[int] = mapped_column(Integer, default=300)
+    cycle_round: Mapped[int] = mapped_column(Integer, default=1)
+    cycle_length: Mapped[int] = mapped_column(Integer, default=4)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    start_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    settlement_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    progress_record_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('progress_records.id', ondelete='SET NULL'))
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('focus_sessions.id', ondelete='SET NULL'))
+    task: Mapped[Task | None] = relationship(lazy='selectin')
+    intervals: Mapped[list['FocusInterval']] = relationship(back_populates='session', cascade='all, delete-orphan', lazy='selectin')
+
+
+class FocusInterval(Base):
+    __tablename__ = 'focus_intervals'
+    __table_args__ = (Index('ix_focus_interval_session', 'session_id'),)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('focus_sessions.id', ondelete='CASCADE'))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    session: Mapped[FocusSession] = relationship(back_populates='intervals')
+
+
 class EmailCode(Base):
     __tablename__ = 'email_codes'
     email: Mapped[str] = mapped_column(String(254), primary_key=True)
