@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent, type Modifiers } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, sortableKeyboardCoordinates, arrayMove } from "@dnd-kit/sortable";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import { ArrowRight, BookOpen, CalendarDays, CalendarCheck2, ChartNoAxesCombined, Check, ChevronDown, CircleHelp, Flag, Footprints, Gift, LayoutDashboard, Moon, Plus, RefreshCw, Search, Sun, TrendingUp, Timer, UserRound, Volume2, VolumeX, X } from "lucide-react";
@@ -37,6 +37,7 @@ const navigation = [
   { id: "account", label: "个人中心", title: "个人中心", icon: UserRound },
 ] as const;
 type View = typeof navigation[number]["id"];
+const taskDragModifiers: Modifiers = [({ transform }) => ({ ...transform, x: 0 })];
 
 export function Dashboard() {
   const { tasks, rewards, stats, user, timezone, todayPlan, loading, busy, error, dark, muted, unlocked, quickFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
@@ -258,7 +259,7 @@ export function Dashboard() {
               <div className="task-toolbar"><div className="filter-tabs" role="group" aria-label="筛选任务">{[["all", "全部"], ["today", "今日"], ["daily", "每日打卡"], ["course", "课程学习"], ["done", "已完成"]].map(([id, title]) => <button key={id} aria-label={id === "today" ? "今日计划" : title} aria-pressed={filter === id} onClick={() => chooseFilter(id)} className={filter === id ? "selected" : ""}>{title}</button>)}</div><button className="day-plan-adjust" aria-label="调整今日计划" title="调整今日计划" disabled={busy} onClick={() => setPlanPickerOpen(true)}><CalendarCheck2 size={17} /><span>{filter === "today" ? "调整计划" : "安排今天"}</span></button></div>
               {filter === "today" && todayPlan.task_ids.length > 0 && <div className="today-plan-caption"><strong>今天最重要的 {todayPlan.task_ids.length} 项</strong><span>最多选 3 项 · 进度沿用原任务</span></div>}
               {filter === "today" && !todayPlan.task_ids.length ? <div className="today-plan-empty"><CalendarCheck2 size={27} /><h2>今天，先做好几件重要的事</h2><p>从已有任务中挑选 1–3 项，给今天一个清晰的方向。</p><Button variant="secondary" onClick={() => setPlanPickerOpen(true)}>选择今日任务<ArrowRight size={16} /></Button></div> : !visible.length && <div className="empty-state"><span className="empty-symbol"><Search size={25} /></span><h2>这里暂时没有匹配的任务</h2><p>换个关键词，或者看看其他分类。</p><Button variant="secondary" onClick={() => { setQuery(""); chooseFilter("all"); }}>查看全部任务<ArrowRight size={16} /></Button></div>}
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorder}>
+              <DndContext sensors={sensors} modifiers={taskDragModifiers} collisionDetection={closestCenter} onDragEnd={reorder}>
                 <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
                   <div className="task-list"><AnimatePresence initial={false}>{active.map(task => <motion.div key={task.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TaskCard task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} focusAction={filter === "today"} /></motion.div>)}</AnimatePresence></div>
                 </SortableContext>
