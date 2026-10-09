@@ -1,0 +1,74 @@
+body[data-focus-fullscreen="true"] .sidebar,
+body[data-focus-fullscreen="true"] .workspace-header,
+body[data-focus-fullscreen="true"] .workspace>.page-footer,
+body[data-focus-fullscreen="true"] .mobile-nav,
+body[data-focus-fullscreen="true"] .skip-link { visibility: hidden; pointer-events: none; }
+.focus-view-actions { display: flex; align-items: center; gap: 5px; }
+.focus-fullscreen-toggle.icon-button { width: auto; min-width: 44px; gap: 7px; padding: 0 10px; font-size: 12px; }
+.focus-fullscreen-toggle span { white-space: nowrap; }
+.focus-fullscreen-task-name,.focus-result-task-name { display: none; }
+.focus-page.is-fullscreen {
+  position: fixed; inset: 0; z-index: 40; width: auto; max-width: none; height: 100dvh;
+  padding: max(20px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background: var(--canvas); overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; outline: none;
+}
+.focus-page.is-fullscreen .focus-page-toolbar { position: sticky; top: 0; z-index: 2; background: var(--canvas); min-height: 44px; margin-bottom: 16px; flex-shrink: 0; }
+.focus-page.is-fullscreen .focus-page-toolbar>p { color: var(--text); font-size: 14px; font-weight: 600; }
+.focus-page.is-fullscreen .focus-view-actions .icon-button { min-height: 40px; height: 40px; }
+.focus-page.is-fullscreen .focus-fullscreen-toggle { background: var(--surface-soft); color: var(--text); }
+.focus-page.is-fullscreen .focus-layout { flex: 1; min-height: min-content; width: 100%; max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: minmax(0,1fr); align-content: center; justify-items: center; gap: 0; }
+.focus-page.is-fullscreen .focus-timer-card { width: 100%; max-width: 690px; padding: 0; background: transparent; border: 0; box-shadow: none; }
+.focus-page.is-fullscreen .focus-mobile-task { display: block; width: min(300px,100%); margin-bottom: 12px; }
+.focus-page.is-fullscreen .focus-mobile-task .field { background: var(--surface); }
+.focus-page.is-fullscreen[data-focus-state="active"] .focus-mobile-task,
+.focus-page.is-fullscreen[data-focus-state="confirming"] .focus-mobile-task { display: none; }
+.focus-page.is-fullscreen[data-focus-state="active"] .focus-fullscreen-task-name,
+.focus-page.is-fullscreen[data-focus-state="confirming"] .focus-fullscreen-task-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 580px; margin-top: 12px; color: var(--text); font-size: 18px; text-align: center; line-height: 1.4; overflow-wrap: anywhere; }
+.focus-page.is-fullscreen .focus-dial { width: clamp(230px, calc(100dvh - 320px), 500px); max-width: 82vw; margin: 26px 0 22px; }
+.focus-page.is-fullscreen .focus-clock { font-size: clamp(47px, calc((100dvh - 320px) * .185), 92px); margin: 14px 0 10px; }
+.focus-page.is-fullscreen .focus-dial-label,.focus-page.is-fullscreen .focus-dial-caption { font-size: 14px; }
+.focus-page.is-fullscreen .focus-rounds { margin-top: 18px; gap: 9px; }
+.focus-page.is-fullscreen .focus-rounds span { width: 6px; height: 6px; }
+.focus-page.is-fullscreen .focus-main-controls { gap: 14px; }
+.focus-page.is-fullscreen .focus-primary-control { min-width: 185px; min-height: 48px; }
+.focus-page.is-fullscreen .focus-under-clock { display: none; }
+.focus-page.is-fullscreen .focus-details { display: none; }
+.focus-page.is-fullscreen .focus-layout.is-confirming { grid-template-columns: minmax(0,1.1fr) minmax(280px,.9fr); gap: 32px; max-width: 1000px; }
+.focus-page.is-fullscreen .focus-layout.is-confirming .focus-details { display: block; width: 100%; max-width: 430px; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; }
+.focus-page.is-fullscreen .focus-layout.is-confirming .focus-details .focus-today,
+.focus-page.is-fullscreen .focus-layout.is-confirming .focus-details .focus-history { display: none; }
+.focus-page.is-fullscreen .focus-confirmation { padding-bottom: 0; }
+@media (max-width: 767px) {
+  .focus-page-toolbar .focus-fullscreen-toggle.icon-button { height: 44px; min-height: 44px; }
+  .focus-page.is-fullscreen { padding: max(12px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); }
+  .focus-page.is-fullscreen .focus-page-toolbar { margin-bottom: 12px; }
+  .focus-page.is-fullscreen .focus-view-actions { gap: 2px; }
+  .focus-page.is-fullscreen .focus-view-actions .icon-button { min-width: 44px; width: 44px; min-height: 44px; height: 44px; }
+  .focus-page.is-fullscreen .focus-view-actions .focus-fullscreen-toggle { width: auto; padding: 0 9px; }
+  .focus-page.is-fullscreen .focus-mobile-task { margin-bottom: 10px; }
+  .focus-page.is-fullscreen .focus-dial { width: min(340px,calc(100dvh - 285px),80vw); margin: 25px 0 19px; }
+  .focus-page.is-fullscreen .focus-clock { font-size: clamp(45px,15vw,64px); margin: 10px 0 8px; }
+  .focus-page.is-fullscreen .focus-dial-label,.focus-page.is-fullscreen .focus-dial-caption { font-size: 12px; }
+  .focus-page.is-fullscreen .focus-rounds { margin-top: 14px; gap: 7px; }
+  .focus-page.is-fullscreen .focus-fullscreen-task-name { font-size: 16px; }
+  .focus-page.is-fullscreen .focus-layout.is-confirming { grid-template-columns: minmax(0,1fr); gap: 0; }
+  .focus-page.is-fullscreen .focus-layout.is-confirming .focus-timer-card { display: none; }
+  .focus-page.is-fullscreen .focus-layout.is-confirming .focus-details { padding: 20px; }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .focus-page.is-fullscreen { padding-top: max(8px,env(safe-area-inset-top)); padding-bottom: max(8px,env(safe-area-inset-bottom)); }
+  .focus-page.is-fullscreen .focus-page-toolbar { margin-bottom: 4px; }
+  .focus-page.is-fullscreen .focus-timer-card { display: grid; grid-template-columns: minmax(0,1fr) minmax(180px,1fr); gap: 10px 20px; align-items: center; justify-items: center; max-width: 760px; }
+  .focus-page.is-fullscreen .focus-dial { grid-column: 1; grid-row: 1 / span 4; width: min(285px,calc(100dvh - 90px)); max-width: 44vw; margin: 0; }
+  .focus-page.is-fullscreen .focus-clock { font-size: clamp(42px,calc((100dvh - 90px) * .19),56px); }
+  .focus-page.is-fullscreen .focus-phase-tabs { grid-column: 2; grid-row: 1; }
+  .focus-page.is-fullscreen .focus-mobile-task,.focus-page.is-fullscreen .focus-fullscreen-task-name { grid-column: 2; grid-row: 2; margin: 0; }
+  .focus-page.is-fullscreen .focus-main-controls { grid-column: 2; grid-row: 3; }
+  .focus-page.is-fullscreen .focus-layout.is-confirming { grid-template-columns: minmax(0,1fr); }
+  .focus-page.is-fullscreen .focus-layout.is-confirming .focus-timer-card { display: none; }
+}
+
+@media (max-width: 767px), (max-height: 520px) and (orientation: landscape) {
+  .focus-page.is-fullscreen .focus-result-task-name { display: block; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+}

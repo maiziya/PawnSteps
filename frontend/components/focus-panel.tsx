@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BookOpen, Check, ChevronDown, Coffee, History, Pause, Play, Settings2, Square, Timer } from "lucide-react";
+import { Bell, BookOpen, Check, ChevronDown, Coffee, History, Maximize, Minimize, Moon, Pause, Play, Settings2, Square, Sun, Timer, Volume2, VolumeX } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,8 +12,10 @@ import { clockText, durationText, phaseLabels, type FocusPhase, type FocusSessio
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { CourseItems } from "./course-items";
+import { useFocusFullscreen } from "@/lib/use-focus-fullscreen";
 import { useTimerRemaining } from "./focus-provider";
 import "./focus.css";
+import "./focus-fullscreen.css";
 
 const defaults: FocusSettings = { focus_minutes: 25, short_break_minutes: 5, long_break_minutes: 15, long_break_interval: 4, auto_start_break: true, rounds_completed: 0 };
 const factors: Record<string, number> = { 秒: 1, 分钟: 60, 小时: 3600 };
@@ -97,6 +99,7 @@ function FocusConfirmation({ session }: { session: FocusSession }) {
     catch (error) { if (error instanceof ApiError && error.status < 500) { pendingRef.current = null; setPending(null); } }
   }
   return <section className="focus-confirmation" aria-label="确认专注成果">
+    <p className="focus-result-task-name" title={session.task_name}>{session.task_name}</p>
     <div className="focus-section-title"><Check size={18} /><h2>{session.status === "completed" ? "这一轮的成果" : "保存这次专注"}</h2></div>
     <p>实际专注 <strong>{durationText(session.elapsed_seconds)}</strong>{session.status === "ended" && "，未计为完整番茄钟"}。</p>
     {canRecord && <>
@@ -110,6 +113,9 @@ function FocusConfirmation({ session }: { session: FocusSession }) {
 }
 
 export function FocusPanel() {
+  const root = useRef<HTMLDivElement>(null);
+  const { fullscreen, transitioning, toggle, toggleButton } = useFocusFullscreen(root);
+  const dark = useAppStore(state => state.dark), muted = useAppStore(state => state.muted);
   const data = useFocusStore(state => state.data), error = useFocusStore(state => state.error);
   const tasks = useAppStore(state => state.tasks), busy = useAppStore(state => state.busy), timezone = useAppStore(state => state.timezone);
   const [phase, setPhase] = useState<FocusPhase>("focus");
@@ -127,13 +133,19 @@ export function FocusPanel() {
   useEffect(() => { if (session?.task_id) setTaskId(session.task_id); }, [session?.id, session?.task_id]);
   async function control(action: string) { if (!session) return; try { await useFocusStore.getState().write(`/${session.id}/${action}`); setEndOpen(false); } catch { /* Store reports the failure. */ } }
   async function start() { try { await useFocusStore.getState().start(tasks.some(task => task.id === taskId && !task.is_done) ? taskId : null, activePhase); } catch { /* Store reports the failure. */ } }
-  return <div className="focus-page">
-    <div className="focus-page-toolbar"><p>一段时间，只做一件事。</p><button className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="专注设置" disabled={!data}><Settings2 size={19} /></button></div>
+  return <div ref={root} className={`focus-page ${fullscreen ? "is-fullscreen" : ""}`} data-focus-state={confirming ? "confirming" : session && !finished ? "active" : "ready"} role={fullscreen ? "dialog" : undefined} aria-modal={fullscreen || undefined} aria-label={fullscreen ? "全屏专注计时" : undefined} tabIndex={fullscreen ? -1 : undefined}>
+    <div className="focus-page-toolbar"><p>{fullscreen ? "专注计时" : "一段时间，只做一件事。"}</p><div className="focus-view-actions">
+      {fullscreen && <button key="theme" className="icon-button" onClick={() => useAppStore.getState().toggleTheme()} aria-label={dark ? "切换浅色模式" : "切换暗色模式"}>{dark ? <Sun size={18} /> : <Moon size={18} />}</button>}
+      {fullscreen && <button key="sound" className="icon-button" onClick={() => useAppStore.getState().toggleMuted()} aria-label={muted ? "开启音效" : "静音"} aria-pressed={muted}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>}
+      <button key="settings" className="icon-button" onClick={() => setSettingsOpen(true)} aria-label="专注设置" disabled={!data}><Settings2 size={19} /></button>
+      <button key="fullscreen" ref={toggleButton} className="icon-button focus-fullscreen-toggle" disabled={transitioning} onClick={() => void toggle()} aria-label={fullscreen ? "退出全屏" : "全屏专注"} aria-pressed={fullscreen} title={fullscreen ? "退出全屏（Esc）" : "全屏专注"}>{fullscreen ? <Minimize size={18} /> : <Maximize size={18} />}<span>{fullscreen ? "退出全屏" : "全屏"}</span></button>
+    </div></div>
     {error && <div className="error-banner" role="alert"><span>{error}</span><Button size="sm" variant="outline" onClick={() => void useFocusStore.getState().refresh()}>重新连接</Button></div>}
     <div className={`focus-layout ${confirming ? "is-confirming" : ""}`}>
       <section className="focus-timer-card panel" aria-label="番茄计时器">
         <div className="focus-mobile-task"><label className="sr-only" htmlFor="focus-mobile-task">关联任务</label><select id="focus-mobile-task" className="field" value={session && !finished ? session.task_id || "" : taskId} disabled={!!session && !finished || busy} onChange={event => setTaskId(event.target.value)}><option value="">自由专注</option>{tasks.filter(task => !task.is_done || task.id === session?.task_id).map(task => <option key={task.id} value={task.id}>{task.name}</option>)}</select></div>
         <div className="focus-phase-tabs" role="group" aria-label="计时模式">{(Object.keys(phaseLabels) as FocusPhase[]).map(value => <button key={value} aria-pressed={activePhase === value} disabled={!!session && (!finished || confirming)} className={activePhase === value ? "selected" : ""} onClick={() => setPhase(value)}>{phaseLabels[value]}</button>)}</div>
+        <p className="focus-fullscreen-task-name" title={session?.task_name || linkedTask?.name || "自由专注"}>{session?.task_name || linkedTask?.name || "自由专注"}</p>
         <FocusDial phase={activePhase} duration={duration} remaining={displayRemaining} status={session && (!finished || confirming) ? session.status : undefined} round={round} length={session && (!finished || confirming) ? session.cycle_length : settings.long_break_interval} />
         <div className="focus-main-controls">{confirming ? <span className="focus-awaiting"><Check size={16} />确认成果，收好这一段时间</span> : session && !finished ? <><Button className="focus-primary-control" disabled={busy} onClick={() => void control(session.status === "running" ? "pause" : "resume")}>{session.status === "running" ? <Pause size={17} /> : <Play size={17} />}{session.status === "running" ? "暂停" : session.phase === "focus" ? "继续专注" : "继续休息"}</Button><button className="icon-button focus-stop" disabled={busy} onClick={() => setEndOpen(true)} aria-label={session.phase === "focus" ? "结束本轮" : "跳过休息"} title={session.phase === "focus" ? "结束本轮" : "跳过休息"}><Square size={16} /></button></> : <Button className="focus-primary-control" disabled={busy || !data} onClick={() => void start()}><Play size={17} />{session?.phase !== "focus" && finished ? "开始下一轮" : activePhase === "focus" ? "开始专注" : "开始休息"}</Button>}</div>
         <p className="focus-under-clock">{confirming ? `本轮累计 ${durationText(session.elapsed_seconds)}` : session?.status === "paused" ? "暂停时不累计专注时长" : session && !finished ? session.phase === "focus" ? `正在专注 · ${session.task_name}` : "休息结束后，由你开始下一轮" : "准备好了，就从现在开始"}</p>
