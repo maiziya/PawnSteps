@@ -73,7 +73,7 @@ body[data-focus-fullscreen="true"] .skip-link { visibility: hidden; pointer-even
   .focus-page.is-fullscreen .focus-result-task-name { display: block; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
 }
 
-@media (max-width: 767px), (max-height: 520px) and (orientation: landscape) {
+@media (max-width: 767px) {
   .focus-result-fullscreen-control { display: block; position: absolute; top: 0; right: 0; }
   .focus-result-fullscreen-control .focus-fullscreen-toggle { position: static; }
   .focus-confirmation .focus-section-title,.focus-result-task-name { padding-right: 50px; }
@@ -82,9 +82,8 @@ body[data-focus-fullscreen="true"] .skip-link { visibility: hidden; pointer-even
 @media (max-width: 767px) {
   .focus-mobile-task { padding-right: 50px; }
 }
-@media (max-width: 360px) {
-  .focus-page.is-fullscreen[data-focus-state="active"] .focus-phase-tabs { margin-right: 44px; }
-}
-@media (max-height: 520px) and (orientation: landscape) {
-  .focus-page.is-fullscreen .focus-phase-tabs { margin-right: 48px; }
-}
+
+.focus-view-actions > .focus-fullscreen-toggle.icon-button { position: static; }
+.focus-page.is-fullscreen .focus-mobile-task { padding-right: 0; }
+.focus-page.is-fullscreen .focus-confirmation .focus-section-title,
+.focus-page.is-fullscreen .focus-result-task-name { padding-right: 0; }
