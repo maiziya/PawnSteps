@@ -23,10 +23,10 @@ function dayStatus(entries: HistoryEntry[]): ActivityStatus {
 function activityLabel(entry: HistoryEntry) {
   if (!entry.quota || entry.quota <= 0) return `完成 ${entry.amount} ${entry.unit}`;
   const difference = entry.amount - entry.quota;
-  const status = difference < 0 ? `未达标，还差 ${-difference} ${entry.unit}` : difference > 0 ? `超额完成 ${difference} ${entry.unit}` : '已达标';
+  const status = difference < 0 ? `未达标，还差 ${-difference} ${entry.unit}` : difference > 0 ? `超量完成 +${difference} ${entry.unit}` : '已达标';
   return `完成 ${entry.amount} / ${entry.quota} ${entry.unit} · ${status}`;
 }
-const statusLabels = { recorded: '有进度', partial: '未达标', met: '已达标', exceeded: '超额完成' };
+const statusLabels = { recorded: '有进度', partial: '未达标', met: '已达标', exceeded: '超量完成' };
 const weekDays = ["一", "二", "三", "四", "五", "六", "日"];
 
 function ActivityRow({ entry }: { entry: HistoryEntry }) {
@@ -34,7 +34,7 @@ function ActivityRow({ entry }: { entry: HistoryEntry }) {
   const hasMinimum = Boolean(entry.quota && entry.quota > 0);
   const quantity = hasMinimum ? `${entry.amount} / ${entry.quota} ${entry.unit}` : `${entry.amount} ${entry.unit}`;
   const detail = status === 'partial' ? `还差 ${entry.quota! - entry.amount} ${entry.unit}`
-    : status === 'exceeded' ? `超额 ${entry.amount - entry.quota!} ${entry.unit}`
+    : status === 'exceeded' ? `超量完成 +${entry.amount - entry.quota!}`
     : status === 'met' ? '已达标' : '已记录';
   return <li>
     <span className={`calendar-complete-check activity-${status}`} aria-hidden="true">{status === 'met' || status === 'exceeded' ? <Check size={14} /> : <Circle size={7} fill="currentColor" />}</span>
@@ -128,7 +128,7 @@ export function CalendarPanel() {
             return <td key={key}><button type="button" className={`calendar-day ${outside ? "outside-month" : ""} ${key === currentDay ? "is-today" : ""} ${key === selectedDay ? "is-selected" : ""} ${entries.length ? `has-records activity-${status}` : restDays.has(key) ? "is-rest" : ""}`} aria-label={`${dateLabel(key)}，${entries.length ? `${entries.length} 项任务有进度，${statusLabels[status]}` : restDays.has(key) ? "休息日" : "暂无任务进度"}`} aria-pressed={key === selectedDay} aria-current={key === currentDay ? "date" : undefined} onClick={() => chooseDay(day)}><span className="calendar-day-number">{day.getDate()}</span><span className="calendar-day-dots" aria-hidden="true">{entries.length > 0 ? <i /> : restDays.has(key) ? <Moon size={11} /> : null}</span></button></td>;
           })}</tr>)}
         </tbody></table>
-        <div className="calendar-legend"><span><i className="activity-partial" />有进度</span><span><i />已达标</span><span><i className="activity-exceeded" />超额完成</span><span>无圆点：未记录</span></div>
+        <div className="calendar-legend"><span><i className="activity-partial" />有进度</span><span><i />已达标</span><span><i className="activity-exceeded" />超量完成</span><span>无圆点：未记录</span></div>
       </div>
       <aside className="calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3></div>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : selectedEntries.length ? <ul className="calendar-completed-list">{selectedEntries.map(entry => <ActivityRow key={entry.task_id} entry={entry} />)}</ul> : <div className="calendar-detail-empty"><CalendarDays size={24} strokeWidth={1.2} /><p>{restDays.has(selectedDay) ? "这一天是休息日，不计漏打卡" : "这一天还没有任务进度"}</p></div>}</aside>
     </div> : <div className="calendar-list-panel panel" aria-busy={loading}>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : recordedDays.length ? recordedDays.map(day => <section className="calendar-list-day" key={day}><button type="button" className="calendar-list-date" onClick={() => { setSelectedDay(day); setView("calendar"); }}><strong>{new Date(`${day}T12:00:00`).getDate()}</strong><span>{new Date(`${day}T12:00:00`).toLocaleDateString("zh-CN", { weekday: "long" })}</span><small>{byDay[day].length} 项任务</small></button><ul className="calendar-completed-list">{byDay[day].map(entry => <ActivityRow key={entry.task_id} entry={entry} />)}</ul></section>) : <div className="calendar-detail-empty"><CalendarDays size={38} strokeWidth={1.2} /><h3>这个月的故事，等你来写</h3><p className="muted">记录一次任务进度，就会出现在这里。</p></div>}</div>}

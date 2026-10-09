@@ -30,7 +30,7 @@ test('calendar distinguishes no work, partial, minimum met, and exceeded amounts
   await expect(taskCard(page, name).getByRole('progressbar')).toHaveAttribute('aria-valuetext', '今日 6 / 5 页');
   await navigate(page, '打卡日历');
   await expect(today).toHaveClass(/activity-exceeded/);
-  await expect(page.locator('.calendar-day-detail')).toContainText('完成 6 / 5 页 · 超额完成 1 页');
+  await expect(page.locator('.calendar-day-detail')).toContainText('完成 6 / 5 页 · 超量完成 +1 页');
   await page.setViewportSize({ width: 375, height: 667 });
   await page.screenshot({ path: '/tmp/pawnsteps-calendar-activity-mobile.png' });
 });
