@@ -23,7 +23,37 @@
   --color-accent: var(--accent-soft); --color-accent-foreground: var(--text); --color-destructive: var(--danger);
   --font-sans: "Avenir Next", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
-* { box-sizing: border-box; }
+/* Scrollbar colors follow the existing light and dark palette. */
+:root {
+  --scrollbar-thumb: color-mix(in srgb, var(--muted) 52%, var(--line));
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--muted) 72%, var(--line));
+  --scrollbar-thumb-active: color-mix(in srgb, var(--accent) 55%, var(--muted));
+}
+* { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+
+/* Chromium and WebKit support rounded thumbs and precise hover feedback. */
+@supports selector(::-webkit-scrollbar) {
+  * { scrollbar-width: auto; scrollbar-color: auto; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border: 2px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    min-height: 32px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
+  ::-webkit-scrollbar-thumb:active { background-color: var(--scrollbar-thumb-active); }
+  ::-webkit-scrollbar-button { display: none; }
+}
+@media (forced-colors: active) {
+  * { scrollbar-width: auto; scrollbar-color: auto; }
+  ::-webkit-scrollbar { width: auto; height: auto; }
+  ::-webkit-scrollbar-thumb { background-color: ButtonText; border-color: Canvas; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background-color: Canvas; }
+}
+
 body { margin: 0; background: var(--canvas); color: var(--text); font-family: var(--font-sans); font-size: 14px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
 @layer base {
   button, input, textarea, select { font: inherit; }
