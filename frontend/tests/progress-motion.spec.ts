@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { openWorkspace, persistedState, taskCard, uniqueName } from './helpers';
+import { expectNoHorizontalOverflow, openWorkspace, persistedState, taskCard, uniqueName } from './helpers';
 import type { MutationResponse, Task } from '../lib/types';
 
 test.use({ reducedMotion: 'no-preference' });
@@ -27,6 +27,8 @@ test('confirmed steps animate new work; decrement has distinct feedback and relo
   await expect(meter).toHaveAttribute('data-feedback', 'step');
   await expect(meter.getByRole('status')).toHaveText('+5 页');
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '5');
+  await expect(meter.locator('.task-progress-particles')).toHaveAttribute('data-kind', 'step');
+  await expect(meter.locator('.task-progress-particles')).toHaveAttribute('aria-hidden', 'true');
   await expect.poll(async () => {
     const fill = (await meter.locator('.task-progress-fill').boundingBox())!;
     const track = (await meter.locator('.task-progress-track').boundingBox())!;
@@ -38,11 +40,13 @@ test('confirmed steps animate new work; decrement has distinct feedback and relo
   await step(page, task, -1);
   await expect(meter).toHaveAttribute('data-feedback', 'decrement');
   await expect(meter.getByRole('status')).toHaveText('−1 页');
+  await expect(meter.locator('.task-progress-particles')).toHaveCount(0);
   await expect(meter.locator('.task-progress-fill')).toHaveAttribute('style', 'width: 20%;');
   expect((await persistedState(page)).tasks[0].progress).toBe(4);
   await page.reload();
   await expect(meter).toHaveAttribute('data-feedback', 'idle');
   await expect(meter.getByRole('status')).toHaveCount(0);
+  await expect(meter.locator('.task-progress-particles')).toHaveCount(0);
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '4');
   await expect(meter.locator('.task-progress-change')).toHaveCount(0);
 });
@@ -84,14 +88,17 @@ test('pending completion never celebrates; failure rolls back and confirmed comp
     await expect(card).not.toHaveClass(/is-celebrating/);
     await expect(meter).not.toHaveClass(/is-met/);
     await expect(page.locator('.task-completion-toast')).toHaveCount(0);
+    await expect(meter.locator('.task-progress-particles')).toHaveCount(0);
   } finally { release(); }
   await expect(meter).toHaveAttribute('data-feedback', 'failed');
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
   await expect(meter.getByRole('status')).toHaveText('待确认 · 可重试');
+  await expect(meter.locator('.task-progress-particles')).toHaveCount(0);
   await step(page, task, 5);
   await expect(card).toHaveClass(/is-celebrating/);
   await expect(meter).toHaveAttribute('data-feedback', 'complete');
   await expect(meter.getByRole('status')).toHaveText('目标完成');
+  await expect(meter.locator('.task-progress-particles')).toHaveAttribute('data-kind', 'complete');
   const completed = page.locator('.task-completion-toast').filter({ hasText: `已完成「${task.name}」` });
   await expect(completed.locator('.completion-mark.is-celebrating')).toHaveCount(1);
   await expect(completed).toContainText('+100 XP');
@@ -99,6 +106,7 @@ test('pending completion never celebrates; failure rolls back and confirmed comp
   await completed.getByRole('button', { name: '撤销', exact: true }).click();
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
   await expect(card).not.toHaveClass(/is-celebrating/);
+  await expect(card.locator('.task-progress-particles')).toHaveCount(0);
   expect((await persistedState(page)).stats.xp).toBe(0);
   const revoked = page.locator('[data-sonner-toast]').filter({ hasText: '已撤回最后一笔记录' });
   await expect(revoked).toBeVisible();
@@ -113,12 +121,14 @@ test('minimum and goal stay distinct; extra work updates the counter without rep
   await expect(meter).toHaveAttribute('data-feedback', 'daily');
   await expect(meter).toHaveClass(/is-met/);
   await expect(meter.getByRole('status')).toHaveText('今日达标');
+  await expect(meter.locator('.task-progress-particles')).toHaveAttribute('data-kind', 'daily');
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '5');
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuemax', '8');
   await page.screenshot({ path: testInfo.outputPath('daily-minimum-met.png') });
   await step(page, task, 5);
   await expect(meter).toHaveAttribute('data-feedback', 'step');
   await expect(meter.getByRole('status')).toHaveText('+5 页');
+  await expect(meter.locator('.task-progress-particles')).toHaveAttribute('data-kind', 'step');
   await expect(meter.locator('.task-progress-counter')).toHaveAttribute('aria-label', '10 / 8 页');
   expect((await persistedState(page)).tasks[0].progress).toBe(1);
   await expect(page.locator('.task-completion-toast')).toHaveCount(0);
@@ -132,10 +142,29 @@ test.describe('reduced motion', () => {
     const card = taskCard(page, task.name);
     await expect(card.locator('.task-progress')).toHaveAttribute('data-motion', 'reduced');
     await expect(card.locator('.task-progress').getByRole('status')).toHaveText('目标完成');
+    await expect(card.locator('.task-progress-particles')).toHaveCount(0);
     const animations = await card.locator('.task-progress, .completion-mark').evaluateAll(elements => elements.flatMap(element => element.getAnimations({ subtree: true })).filter(animation => animation.playState === 'running').length);
     expect(animations).toBe(0);
     await expect(page.locator('.task-completion-toast').getByRole('button', { name: '撤销', exact: true })).toBeVisible();
   });
+});
+
+test('completion particles fit a narrow phone and disappear after feedback expires', async ({ page }) => {
+  const task = await seed(page, { target: 1 });
+  await page.setViewportSize({ width: 320, height: 812 });
+  await step(page, task, 1);
+  const particles = taskCard(page, task.name).locator('.task-progress-particles');
+  await expect(particles).toHaveAttribute('data-kind', 'complete');
+  expect(await particles.evaluate(el => getComputedStyle(el).pointerEvents)).toBe('none');
+  await particles.evaluate(el => {
+    for (const animation of el.getAnimations({ subtree: true })) {
+      animation.pause();
+      animation.currentTime = 400;
+    }
+  });
+  await expectNoHorizontalOverflow(page);
+  await expect(page.locator('.task-progress-particles')).toHaveCount(0);
+  expect((await persistedState(page)).stats.xp).toBe(100);
 });
 
 test('course checklist completion uses the same feedback and does not celebrate a loaded completed course', async ({ page }) => {
