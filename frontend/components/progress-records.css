@@ -1,4 +1,5 @@
-.progress-records-dialog { width: min(620px, calc(100vw - 32px)); }
+.progress-records-dialog.dialog-content { width: min(620px, calc(100vw - 32px)); display: flex; flex-direction: column; padding: 20px 10px; overflow: hidden; }
+.progress-records-scroll { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 10px 20px; }
 .progress-records-dialog .dialog-header h2 { overflow-wrap: anywhere; font-size: 21px; }
 .record-totals { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
 .record-totals>span { min-width: 0; color: var(--muted); font-size: 12px; }
@@ -36,7 +37,8 @@
 .record-loading { display: flex; justify-content: center; align-items: center; gap: 8px; }
 .record-load-more { width: 100%; margin-top: 12px; }
 @media (max-width: 767px) {
-  .progress-records-dialog { padding: 23px 18px; }
+  .progress-records-dialog.dialog-content { padding: 16px 8px; }
+  .progress-records-scroll { padding: 7px 10px; }
   .progress-records-dialog .dialog-header h2 { font-size: 19px; }
   .record-totals { gap: 12px; }
   .record-totals strong { font-size: 18px; }

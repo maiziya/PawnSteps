@@ -158,35 +158,37 @@ export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: stri
         target?.focus({ preventScroll: true });
       });
     }}>
-      <DialogHeader>
-        <DialogTitle>记录进度 · {task?.name}</DialogTitle>
-        <DialogDescription>{status}</DialogDescription>
-      </DialogHeader>
-      {task && <>
-        <div className="record-totals" aria-label="进度汇总">
-          <span>{isDaily && !isPlan ? '累计达标' : '总进度'}<strong>{task.progress} / {task.target} <small>{isDaily && !isPlan ? '天' : unit}</small></strong></span>
-          <span>今日完成<strong>{task.today_amount}{isDaily && task.daily_quota > 0 ? ` / ${task.daily_quota}` : ''} <small>{unit}</small></strong></span>
-        </div>
-        {canRecord && <form className="record-create-form" onSubmit={addRecord}>
-          <div className="record-amount-row"><label htmlFor="record-amount">本次完成量<span className="record-input-unit"><Input id="record-amount" aria-label="本次完成量" type="number" inputMode="numeric" min={1} max={MAX_AMOUNT} step={1} value={amount} disabled={pending} aria-invalid={Boolean(formError)} onChange={event => { setAmount(event.target.value); pendingAttempt.current = null; }} /><span>{unit}</span></span></label><Button type="submit" disabled={pending}>{submitting && <LoaderCircle size={16} className="animate-spin" />}保存记录</Button></div>
-          <label htmlFor="record-note">备注 <span className="record-optional">可选</span><Input id="record-note" aria-label="备注" placeholder="写下这次做了什么" value={note} maxLength={200} disabled={pending} onChange={event => { setNote(event.target.value); pendingAttempt.current = null; }} /></label>
-          {formError && <p role="alert" className="record-error">{formError}</p>}
-        </form>}
-        <section className="record-history" aria-label="进度记录">
-          <div className="record-history-heading"><h3><History size={17} />记录历史</h3><span>{total} 条记录</span></div>
-          {records.length === 0 && !loading && !loadError && <p className="record-empty">还没有记录，完成后在这里留下一笔。</p>}
-          <div className="record-list">{records.map(record => <article className="record-entry" key={record.id} aria-label={`进度记录 ${record.id}`}>
-            <div className="record-entry-heading"><strong>{record.amount} <span>{unit}</span></strong><span className="record-date">{record.date === null ? '旧版累计 · 日期未知' : `${record.source === 'legacy' ? '旧版记录 · ' : ''}${record.date}${record.source === 'manual' ? ` ${new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at))}` : ''}`}</span></div>
-            {editingId === record.id && !task.archived_at ? <form className="record-edit-form" onSubmit={saveEdit}><label htmlFor={`edit-amount-${record.id}`}>修改完成量<Input id={`edit-amount-${record.id}`} type="number" min={1} max={MAX_AMOUNT} step={1} value={editAmount} disabled={pending} onChange={event => setEditAmount(event.target.value)} /></label><label htmlFor={`edit-note-${record.id}`}>修改备注<Input id={`edit-note-${record.id}`} value={editNote} maxLength={200} disabled={pending} onChange={event => setEditNote(event.target.value)} /></label>{editError && <p role="alert" className="record-error">{editError}</p>}<div className="record-edit-actions"><Button type="button" variant="ghost" disabled={pending} onClick={() => setEditingId(null)}>取消编辑</Button><Button type="submit" disabled={pending}>保存修改</Button></div></form> : <>
-              {record.note && <p className="record-note">{record.note}</p>}
-              {!task.archived_at && <div className="record-entry-actions"><button type="button" disabled={pending} onClick={() => { setEditingId(record.id); setEditAmount(String(record.amount)); setEditNote(record.note); setEditError(''); }}><Pencil size={14} />编辑记录</button><button type="button" disabled={pending} onClick={() => void revoke(record)}><RotateCcw size={14} />撤销记录</button></div>}
-            </>}
-          </article>)}</div>
-          {loading && <p className="record-loading" role="status"><LoaderCircle size={16} className="animate-spin" />正在读取记录</p>}
-          {loadError && <div className="record-load-error"><p role="alert">{loadError}</p><Button variant="outline" onClick={() => void loadMore()} disabled={pending}>重新加载</Button></div>}
-          {!loading && !loadError && records.length < total && <Button className="record-load-more" type="button" variant="outline" disabled={pending} onClick={() => void loadMore()}>加载更多记录</Button>}
-        </section>
-      </>}
+      <div className="progress-records-scroll">
+        <DialogHeader>
+          <DialogTitle>记录进度 · {task?.name}</DialogTitle>
+          <DialogDescription>{status}</DialogDescription>
+        </DialogHeader>
+        {task && <>
+          <div className="record-totals" aria-label="进度汇总">
+            <span>{isDaily && !isPlan ? '累计达标' : '总进度'}<strong>{task.progress} / {task.target} <small>{isDaily && !isPlan ? '天' : unit}</small></strong></span>
+            <span>今日完成<strong>{task.today_amount}{isDaily && task.daily_quota > 0 ? ` / ${task.daily_quota}` : ''} <small>{unit}</small></strong></span>
+          </div>
+          {canRecord && <form className="record-create-form" onSubmit={addRecord}>
+            <div className="record-amount-row"><label htmlFor="record-amount">本次完成量<span className="record-input-unit"><Input id="record-amount" aria-label="本次完成量" type="number" inputMode="numeric" min={1} max={MAX_AMOUNT} step={1} value={amount} disabled={pending} aria-invalid={Boolean(formError)} onChange={event => { setAmount(event.target.value); pendingAttempt.current = null; }} /><span>{unit}</span></span></label><Button type="submit" disabled={pending}>{submitting && <LoaderCircle size={16} className="animate-spin" />}保存记录</Button></div>
+            <label htmlFor="record-note">备注 <span className="record-optional">可选</span><Input id="record-note" aria-label="备注" placeholder="写下这次做了什么" value={note} maxLength={200} disabled={pending} onChange={event => { setNote(event.target.value); pendingAttempt.current = null; }} /></label>
+            {formError && <p role="alert" className="record-error">{formError}</p>}
+          </form>}
+          <section className="record-history" aria-label="进度记录">
+            <div className="record-history-heading"><h3><History size={17} />记录历史</h3><span>{total} 条记录</span></div>
+            {records.length === 0 && !loading && !loadError && <p className="record-empty">还没有记录，完成后在这里留下一笔。</p>}
+            <div className="record-list">{records.map(record => <article className="record-entry" key={record.id} aria-label={`进度记录 ${record.id}`}>
+              <div className="record-entry-heading"><strong>{record.amount} <span>{unit}</span></strong><span className="record-date">{record.date === null ? '旧版累计 · 日期未知' : `${record.source === 'legacy' ? '旧版记录 · ' : ''}${record.date}${record.source === 'manual' ? ` ${new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at))}` : ''}`}</span></div>
+              {editingId === record.id && !task.archived_at ? <form className="record-edit-form" onSubmit={saveEdit}><label htmlFor={`edit-amount-${record.id}`}>修改完成量<Input id={`edit-amount-${record.id}`} type="number" min={1} max={MAX_AMOUNT} step={1} value={editAmount} disabled={pending} onChange={event => setEditAmount(event.target.value)} /></label><label htmlFor={`edit-note-${record.id}`}>修改备注<Input id={`edit-note-${record.id}`} value={editNote} maxLength={200} disabled={pending} onChange={event => setEditNote(event.target.value)} /></label>{editError && <p role="alert" className="record-error">{editError}</p>}<div className="record-edit-actions"><Button type="button" variant="ghost" disabled={pending} onClick={() => setEditingId(null)}>取消编辑</Button><Button type="submit" disabled={pending}>保存修改</Button></div></form> : <>
+                {record.note && <p className="record-note">{record.note}</p>}
+                {!task.archived_at && <div className="record-entry-actions"><button type="button" disabled={pending} onClick={() => { setEditingId(record.id); setEditAmount(String(record.amount)); setEditNote(record.note); setEditError(''); }}><Pencil size={14} />编辑记录</button><button type="button" disabled={pending} onClick={() => void revoke(record)}><RotateCcw size={14} />撤销记录</button></div>}
+              </>}
+            </article>)}</div>
+            {loading && <p className="record-loading" role="status"><LoaderCircle size={16} className="animate-spin" />正在读取记录</p>}
+            {loadError && <div className="record-load-error"><p role="alert">{loadError}</p><Button variant="outline" onClick={() => void loadMore()} disabled={pending}>重新加载</Button></div>}
+            {!loading && !loadError && records.length < total && <Button className="record-load-more" type="button" variant="outline" disabled={pending} onClick={() => void loadMore()}>加载更多记录</Button>}
+          </section>
+        </>}
+      </div>
     </DialogContent>
   </Dialog>;
 }
