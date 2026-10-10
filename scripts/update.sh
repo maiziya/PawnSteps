@@ -39,7 +39,12 @@ done
 for program in git docker tar; do command -v "$program" >/dev/null || fail "缺少命令：$program"; done
 [[ $(git rev-parse --show-toplevel) == "$project_root" ]] || fail '请在原部署项目中运行'
 [[ $(git symbolic-ref --quiet --short HEAD) == main ]] || fail '服务器代码需要位于 main 分支'
-git diff --quiet && git diff --cached --quiet || fail '存在未提交的代码改动，请先处理，环境设置应放在 .env 中'
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  say '检测到以下本地修改，需要先保留和处理：' >&2
+  git diff --stat >&2
+  git diff --cached --stat >&2
+  fail '存在未提交的代码改动，请先处理，环境设置应放在 .env 或本地 Compose 覆盖文件中'
+fi
 [[ -f "$env_file" ]] || fail "找不到环境文件：$env_file"
 env_file=$(cd -- "$(dirname -- "$env_file")" && printf '%s/%s' "$(pwd -P)" "$(basename -- "$env_file")")
 export PAWNSTEPS_ENV_FILE="$env_file"

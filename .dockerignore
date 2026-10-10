@@ -6,6 +6,10 @@
 .env
 **/.env
 **/.env.local
+.env.bak*
+**/.env.bak*
+compose.override.yaml
+compose.override.yml
 **/*.db
 **/uploads
 test-results

@@ -6,6 +6,9 @@ __pycache__/
 *.db-*
 .env
 .env.local
+.env.bak*
+compose.override.yaml
+compose.override.yml
 node_modules/
 .next/
 uploads/
