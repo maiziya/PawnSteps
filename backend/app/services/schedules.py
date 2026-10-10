@@ -66,6 +66,12 @@ def weekly_progress(task: Task, day: date) -> tuple[int, int | None]:
     config, effective = configuration(task, day)
     if config.mode != 'weekly':
         return 0, None
+    # Changing the weekly target keeps days earned in the current weekly schedule.
+    for row in sorted((row for row in task.schedules if row.starts_on <= day),
+                      key=lambda row: row.starts_on, reverse=True):
+        if row.mode != 'weekly' or not row.enabled:
+            break
+        effective = row.starts_on
     monday = day - timedelta(days=day.weekday())
     start = max(monday, effective)
     end = monday + timedelta(days=6)

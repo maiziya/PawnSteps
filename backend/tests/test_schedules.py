@@ -203,3 +203,22 @@ async def test_array_plan_rests_do_not_earn_streak_or_daily_completion(client, g
     rest = await state(client, guest_headers)
     assert rest['stats']['streak'] == 1
     assert rest['stats']['today_completed'] == rest['stats']['today_total'] == 0
+
+
+async def test_editing_weekly_target_retains_days_already_earned(client, guest_headers, frozen_day):
+    frozen_day['date'] = date(2026, 10, 5)
+    task = await create_task(client, guest_headers, target=100, daily_minimum=1,
+        schedule={'mode': 'weekly', 'weekly_target': 2})
+    await add_record(client, guest_headers, task['id'], 1)
+    frozen_day['date'] += timedelta(days=1)
+    await add_record(client, guest_headers, task['id'], 1)
+    changed = assert_mutation(await client.patch(f"/api/tasks/{task['id']}", headers=guest_headers,
+        json={'schedule': {'mode': 'weekly', 'weekly_target': 3}}))
+    assert changed['tasks'][0]['weekly_completed'] == changed['tasks'][0]['weekly_target'] == 2
+    frozen_day['date'] += timedelta(days=1)
+    next_day = await state(client, guest_headers)
+    assert next_day['tasks'][0]['weekly_completed'] == 2 and next_day['tasks'][0]['weekly_target'] == 3
+    assert next_day['tasks'][0]['is_scheduled_today']
+    completed = await add_record(client, guest_headers, task['id'], 1)
+    assert completed['tasks'][0]['weekly_completed'] == 3
+    assert completed['stats']['streak'] == 3
