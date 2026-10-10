@@ -42,6 +42,7 @@ class ScheduleConfig(BaseModel):
 
 
 class TaskCreate(BaseModel):
+    deadline: date | None = None
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(default='', max_length=200)
@@ -92,6 +93,7 @@ class TaskCreate(BaseModel):
 
 
 class TaskPatch(BaseModel):
+    deadline: date | None = None
     schedule: ScheduleConfig | None = None
     name: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=200)
@@ -228,6 +230,7 @@ class TaskOut(BaseModel):
     id: UUID
     name: str
     description: str
+    deadline: date | None = None
     unit: str
     target: int
     progress: int

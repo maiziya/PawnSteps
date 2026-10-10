@@ -1,7 +1,7 @@
 export interface CourseItem { name: string; done: boolean; done_date?: string | null }
 export interface TaskSchedule { mode: "daily" | "weekdays" | "weekly"; weekdays: number[]; weekly_target: number | null }
 export interface Task {
-  id: string; name: string; description: string; target: number; progress: number;
+  id: string; name: string; description: string; deadline?: string | null; target: number; progress: number;
   is_done: boolean; done_at: string | null; priority: "high" | "medium" | "low";
   position: number; reward_id: string | null; daily_goal: number | null; daily_minimum: number; daily_quota: number; daily_progress: number;
   daily_done: boolean; daily_date: string | null; daily_plan: number[] | null;

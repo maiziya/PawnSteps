@@ -14,6 +14,8 @@
 .compact-task-meta { display: flex; align-items: center; flex-wrap: wrap; column-gap: 12px; row-gap: 2px; min-width: 0; color: var(--muted); font-size: 12px; line-height: 18px; }
 .compact-task-meta>span { max-width: 100%; overflow-wrap: anywhere; }
 .compact-task-meta>span.is-complete { color: var(--success); }
+.task-deadline { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.task-deadline.is-overdue { color: var(--primary); }
 .compact-task-actions { display: flex; align-items: center; flex-shrink: 0; margin-right: -8px; }
 .compact-task-button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
 .compact-task-drag { touch-action: none; cursor: grab; }

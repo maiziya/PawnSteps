@@ -319,7 +319,7 @@ async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body:
     task = await get_task(session, owner_id, task_id)
     values = body.model_dump(exclude_unset=True)
     for key, value in values.items():
-        if value is None and key != 'reward_id' and not (key == 'daily_goal' and task.course_items is not None):
+        if value is None and key not in {'reward_id', 'deadline'} and not (key == 'daily_goal' and task.course_items is not None):
             raise HTTPException(422, f'{key} cannot be null')
     requested_schedule = values.pop('schedule', None)
     if 'name' in values:

@@ -57,6 +57,7 @@ class Task(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(String(200), default='')
+    deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     unit: Mapped[str] = mapped_column(String(12), default='步', server_default='步')
     target: Mapped[int] = mapped_column(Integer, default=1)
     progress: Mapped[int] = mapped_column(Integer, default=0)

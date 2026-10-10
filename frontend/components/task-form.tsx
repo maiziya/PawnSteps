@@ -17,6 +17,7 @@ import './task-form.css';
 const formSchema = z.object({
   name: z.string().trim().min(1, '给这个目标起个名字').max(100, '名称最多 100 个字'),
   description: z.string().max(200, '描述最多 200 个字'),
+  deadline: z.string().refine(value => !value || /^\d{4}-\d{2}-\d{2}$/.test(value), '请选择有效的截止日期'),
   target: z.string().refine(value => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 100, '请输入 1–100 的整数'),
   priority: z.enum(['high', 'medium', 'low']),
   rewardId: z.string(),
@@ -51,6 +52,7 @@ function defaultValues(task?: Task | null, kind: TaskKind = 'normal'): FormValue
   return {
     name: task?.name || '',
     description: task?.description || '',
+    deadline: task?.deadline || '',
     target: String(task && !task.daily_plan && !task.course_items ? task.target : 10),
     priority: task?.priority || 'medium',
     rewardId: task?.reward_id || '',
@@ -67,6 +69,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   const [kind, setKind] = useState<TaskKind>('normal');
   const [courseDaily, setCourseDaily] = useState(true);
   const [schedule, setSchedule] = useState<TaskSchedule>(everydaySchedule);
+  const [deadlineInputVersion, setDeadlineInputVersion] = useState(0);
   const [courseItems, setCourseItems] = useState<CourseItem[]>([]);
   const [importName, setImportName] = useState('');
   const [importError, setImportError] = useState('');
@@ -79,6 +82,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   const { register, handleSubmit, reset, setError, clearErrors, watch, setValue, getValues, getFieldState, formState: { errors, isSubmitting } } = useForm<FormValues>({ resolver: zodResolver(formSchema), defaultValues: defaultValues(task) });
   const selectedUnit = watch('unit');
   const minimum = watch('dailyQuota');
+  const deadline = watch('deadline');
   useEffect(() => {
     if (!getFieldState('dailyGoal').isDirty && Number(minimum) > Number(getValues('dailyGoal'))) {
       setValue('dailyGoal', minimum);
@@ -147,6 +151,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
       schedule: appliedSchedule,
       name: values.name,
       description: values.description,
+      deadline: values.deadline || null,
       priority: values.priority,
       reward_id: values.rewardId || null,
       unit,
@@ -199,6 +204,11 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
 
   const updateSchedule = (value: TaskSchedule) => { setSchedule(value); clearErrors('root.schedule'); };
   const additionalFields = <>
+          <div className="space-y-1.5"><div className="task-deadline-label"><label htmlFor="task-deadline" className="text-sm font-medium">截止日期 <span className="font-normal text-[var(--muted)]">可选</span></label>{deadline && <button type="button" onClick={() => {
+            setValue('deadline', '', { shouldDirty: true, shouldValidate: true });
+            // Reset WebKit's native date editor, which can block submission after an imperative clear.
+            setDeadlineInputVersion(version => version + 1);
+          }}>清空截止日期</button>}</div><Input key={deadlineInputVersion} id="task-deadline" type="date" aria-label="截止日期" {...register('deadline')} />{errors.deadline && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.deadline.message}</p>}</div>
           <div className="task-settings-grid">
             <div className="space-y-1.5"><label htmlFor="task-priority" className="text-sm font-medium">优先级</label><select id="task-priority" className="field w-full" {...register('priority')}><option value="high">高 · 优先投入</option><option value="medium">中 · 稳步推进</option><option value="low">低 · 从容安排</option></select></div>
             <div className="space-y-1.5"><label htmlFor="task-reward" className="text-sm font-medium">完成后的奖励</label><select id="task-reward" className="field w-full" {...register('rewardId')}><option value="">暂不关联奖励</option>{rewards.filter(reward => reward.streak_target === null).map(reward => <option key={reward.id} value={reward.id}>{reward.name}{reward.is_unlocked ? '（已解锁）' : ''}</option>)}</select></div>
@@ -260,7 +270,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
               <div className="space-y-1.5"><label htmlFor="course-goal">每日目标量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-goal" aria-label="每日目标量" type="number" min={1} max={courseCount || 10000} {...register('dailyGoal')} />{errors.dailyGoal && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyGoal.message}</p>}</div>
             </div>}
           </div>}
-          <details className="task-course-options"><summary>优先级、奖励与备注<ChevronDown size={16} /></summary><div className="task-form-fields">{additionalFields}</div></details>
+          <details className="task-course-options"><summary>截止日期、优先级与备注<ChevronDown size={16} /></summary><div className="task-form-fields">{additionalFields}</div></details>
           <div className="task-form-footer"><Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>取消</Button><Button type="submit" disabled={pending}>{pending && <LoaderCircle size={16} className="animate-spin" />}{task ? '保存调整' : '创建任务'}</Button></div>
         </form>
       </DialogContent>

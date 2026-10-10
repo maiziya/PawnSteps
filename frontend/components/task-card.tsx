@@ -25,6 +25,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
   const mutate = useAppStore(state => state.mutate);
   const busy = useAppStore(state => state.busy);
   const timezone = useAppStore(state => state.timezone);
+  const today = useAppStore(state => state.today);
   const quickRecord = useAppStore(state => state.quickRecord);
   const feedback = useAppStore(state => state.quickFeedback[task.id]);
   const reward = useAppStore(state => state.rewards.find(reward => reward.id === task.reward_id));
@@ -56,6 +57,9 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
   const meterLabel = `${useDailyMeter ? todayAmount : meterCurrent} / ${meterMaximum} ${isDaily && !isPlan && !useDailyMeter ? '天' : task.unit}`;
   const meterCaption = useDailyMeter ? '今日进度' : '总进度';
   const frequencyLabel = scheduleLabel(task.schedule);
+  const overdue = Boolean(task.deadline && today && task.deadline < today && !task.is_done);
+  const deadlineDate = task.deadline ? (task.deadline.slice(0, 4) === today.slice(0, 4) ? task.deadline.slice(5) : task.deadline).replaceAll('-', '/') : '';
+  const deadlineLabel = task.deadline === today && !task.is_done ? '今天截止' : `${overdue ? '已逾期' : '截止'} ${deadlineDate}`;
   const activitySummary = task.is_done && todayAmount === 0 ? '已完成' : task.schedule.mode === 'weekly' ? `本周 ${task.weekly_completed} / ${task.weekly_target} 天`
     : !task.is_scheduled_today && !task.daily_done && todayAmount === 0 && task.schedule.mode === 'weekdays' ? '今日休息'
     : restDay || inactivePlan ? minimumLabel : `今日 ${todayAmount}${dailyGoal > 0 ? ` / ${dailyGoal}` : ''} ${task.unit}`;
@@ -84,8 +88,9 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
               {task.priority === 'high' && <span className="compact-task-priority priority-high" title={priority} aria-label={priority}>优先</span>}
               {reward && <span className="compact-task-reward" title={`关联奖励：${reward.name}`} aria-label={`关联奖励：${reward.name}`}><Gift size={14} aria-hidden="true" /></span>}
             </div>
-            {(!isCourse || dailyGoal > 0) && <div className="compact-task-meta">
-              <span className={task.daily_done || task.is_done ? 'is-complete' : undefined} aria-label={`${task.name}已完成量`} title={`${dailyGoal > 0 ? `每日目标 ${dailyGoal} ${task.unit}，` : ''}${minimumLabel}`}>{activitySummary}</span>
+            {(!isCourse || dailyGoal > 0 || task.deadline) && <div className="compact-task-meta">
+              {(!isCourse || dailyGoal > 0) && <span className={task.daily_done || task.is_done ? 'is-complete' : undefined} aria-label={`${task.name}已完成量`} title={`${dailyGoal > 0 ? `每日目标 ${dailyGoal} ${task.unit}，` : ''}${minimumLabel}`}>{activitySummary}</span>}
+              {task.deadline && <span className={`task-deadline ${overdue ? 'is-overdue' : ''}`} title={`截止日期：${task.deadline}`}><CalendarDays size={12} aria-hidden="true" /><time dateTime={task.deadline}>{deadlineLabel}</time></span>}
             </div>}
           </div>
           <div className="compact-task-actions">
@@ -145,6 +150,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
             {(!isCourse || dailyGoal > 0) && <><div><dt>每日目标量</dt><dd>{dailyGoal > 0 ? `${dailyGoal} ${task.unit}` : '未设置'}</dd></div><div><dt>最小完成量</dt><dd>{dailyMinimum > 0 ? `${dailyMinimum} ${task.unit}` : restDay ? '休息日' : '未设置'}</dd></div></>}
             <div><dt>执行周期</dt><dd>{frequencyLabel}</dd></div><div><dt>今日完成</dt><dd>{todayAmount} {isCourse ? '节' : task.unit}</dd></div><div><dt>优先级</dt><dd>{priority}</dd></div>
             <div><dt>创建日期</dt><dd><time dateTime={task.created_at}>{new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(task.created_at))}</time></dd></div>
+            {task.deadline && <div><dt>截止日期</dt><dd><time dateTime={task.deadline}>{task.deadline.replaceAll('-', '/')}</time></dd></div>}
             {task.pending_schedule && <div><dt>{task.pending_schedule_date} 起</dt><dd>{scheduleLabel(task.pending_schedule)}</dd></div>}
           </dl>
           {task.description && <p>{task.description}</p>}{reward && <p className="compact-task-reward-detail"><Gift size={15} aria-hidden="true" /><span>关联奖励：{reward.name}</span></p>}
