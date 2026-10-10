@@ -7,10 +7,11 @@ import { toast } from 'sonner';
 import { useAppStore } from '@/lib/store';
 import { ownerIdentity } from '@/lib/api';
 import type { Task } from '@/lib/types';
+import { CategoryBadge, matchesCategory } from './task-categories';
 import './archive-panel.css';
 
-export function ArchivePanel({ query, onOpenRecords, onOpenCourse, onRestored }: {
-  query: string;
+export function ArchivePanel({ query, categoryFilter = "all", onOpenRecords, onOpenCourse, onRestored }: {
+  query: string; categoryFilter?: string;
   onOpenRecords: (id: string) => void;
   onOpenCourse: (id: string) => void;
   onRestored: (task: Task) => void;
@@ -24,8 +25,8 @@ export function ArchivePanel({ query, onOpenRecords, onOpenCourse, onRestored }:
     update(); media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
   }, []);
-  useEffect(() => { setPage(0); }, [query]);
-  const matching = archivedTasks.filter(task => task.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  useEffect(() => { setPage(0); }, [query, categoryFilter]);
+  const matching = archivedTasks.filter(task => matchesCategory(task, categoryFilter) && task.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const pages = Math.max(1, Math.ceil(matching.length / pageSize));
   const current = Math.min(page, pages - 1);
   const rows = matching.slice(current * pageSize, (current + 1) * pageSize);
@@ -52,7 +53,7 @@ export function ArchivePanel({ query, onOpenRecords, onOpenCourse, onRestored }:
       const archivedDate = new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(task.archived_at!));
       return <article key={task.id} className="archive-row" aria-label={`归档任务 ${task.name}`}>
         <div className="archive-row-content">
-          <h3 title={task.name}>{task.name}</h3>
+          <h3 title={task.name}>{task.name}</h3><CategoryBadge categoryId={task.category_id} />
           <div className="archive-row-meta"><span className={task.is_done ? 'archive-complete' : ''}>{task.is_done ? '已完成' : '已暂停'}</span><span><time dateTime={task.archived_at!}>{archivedDate}</time> 归档</span></div>
           <div className="archive-progress"><div role="progressbar" aria-label={`${task.name}归档进度`} aria-valuemin={0} aria-valuemax={task.target} aria-valuenow={task.progress}><span style={{ width: `${Math.min(100, task.target ? task.progress / task.target * 100 : 0)}%` }} /></div><span>{task.progress} / {task.target} {unit}</span></div>
         </div>

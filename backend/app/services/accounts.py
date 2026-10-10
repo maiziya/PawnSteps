@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import create_access_token, hash_password, verify_password
 from app.config import settings
-from app.models import AuthRate, AuthState, DailyHistory, EmailCode, Owner, ProgressRecord, Reward, Task, TaskArchivePeriod, TaskSchedule, User
+from app.models import AuthRate, AuthState, DailyHistory, EmailCode, Owner, ProgressRecord, Reward, Task, TaskCategory, TaskArchivePeriod, TaskSchedule, User
 from app.schemas import ProgressRecordOut
 from app.services import day_plan, focus, tracker
 from app.services.storage import save_image
@@ -104,6 +104,20 @@ async def migrate_guest(session: AsyncSession, guest_owner: str | None, user: Us
     await session.flush()
     for reward in duplicates:
         await session.delete(reward)
+    user_categories = {row.name.casefold(): row for row in (await session.scalars(select(TaskCategory).where(TaskCategory.owner_id == user_owner))).all()}
+    guest_categories = (await session.scalars(select(TaskCategory).where(TaskCategory.owner_id == guest_owner).order_by(TaskCategory.position, TaskCategory.id))).all()
+    next_position = max((row.position for row in user_categories.values()), default=-1) + 1
+    for category in guest_categories:
+        existing = user_categories.get(category.name.casefold())
+        if existing:
+            await session.execute(update(Task).where(Task.owner_id == guest_owner, Task.category_id == category.id).values(category_id=existing.id))
+            await session.delete(category)
+        else:
+            category.owner_id = user_owner
+            category.position = next_position
+            next_position += 1
+            user_categories[category.name.casefold()] = category
+    await session.flush()
     existing_names = set((await session.scalars(select(Task.name).where(Task.owner_id == user_owner))).all())
     tasks = list((await session.scalars(select(Task).where(Task.owner_id == guest_owner).order_by(Task.created_at, Task.id))).all())
     for task in tasks:

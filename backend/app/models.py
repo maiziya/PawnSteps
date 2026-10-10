@@ -46,6 +46,19 @@ class Reward(Base):
     owner_id: Mapped[str] = mapped_column(ForeignKey('owners.id'), index=True)
 
 
+class TaskCategory(Base):
+    __tablename__ = 'task_categories'
+    __table_args__ = (
+        UniqueConstraint('owner_id', 'name', name='uq_category_owner_name'),
+        CheckConstraint("color IN ('clay', 'sage', 'ochre', 'slate', 'rose', 'lavender')", name='ck_category_color'),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[str] = mapped_column(ForeignKey('owners.id'), index=True)
+    name: Mapped[str] = mapped_column(String(20))
+    color: Mapped[str] = mapped_column(String(12), default='sage')
+    position: Mapped[float] = mapped_column(Float, default=0)
+
+
 class Task(Base):
     __tablename__ = 'tasks'
     __table_args__ = (
@@ -66,6 +79,7 @@ class Task(Base):
     priority: Mapped[str] = mapped_column(String(10), default='medium')
     position: Mapped[float] = mapped_column(Float, default=0)
     reward_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('rewards.id', ondelete='SET NULL'))
+    category_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey('task_categories.id', ondelete='SET NULL'), index=True)
     daily_goal: Mapped[int | None] = mapped_column(Integer, nullable=True)
     daily_minimum: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     daily_quota: Mapped[int] = mapped_column(Integer, default=0)

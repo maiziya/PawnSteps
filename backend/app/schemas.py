@@ -42,6 +42,7 @@ class ScheduleConfig(BaseModel):
 
 
 class TaskCreate(BaseModel):
+    category_id: UUID | None = None
     deadline: date | None = None
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
     name: str = Field(min_length=1, max_length=100)
@@ -93,6 +94,7 @@ class TaskCreate(BaseModel):
 
 
 class TaskPatch(BaseModel):
+    category_id: UUID | None = None
     deadline: date | None = None
     schedule: ScheduleConfig | None = None
     name: str | None = Field(default=None, min_length=1, max_length=100)
@@ -238,11 +240,57 @@ class RewardPatch(BaseModel):
         return RewardCreate.valid_image_url(value)
 
 
+CategoryColor = Literal['clay', 'sage', 'ochre', 'slate', 'rose', 'lavender']
+
+
+class CategoryCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    name: str = Field(min_length=1, max_length=20)
+    color: CategoryColor = 'sage'
+
+    @field_validator('name')
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError('Category name cannot be blank')
+        return value.strip()
+
+
+class CategoryPatch(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    name: str | None = Field(default=None, min_length=1, max_length=20)
+    color: CategoryColor | None = None
+
+    @model_validator(mode='after')
+    def validate_changes(self) -> 'CategoryPatch':
+        if not self.model_fields_set or any(getattr(self, key) is None for key in self.model_fields_set):
+            raise ValueError('Provide a non-null category field')
+        if self.name is not None:
+            self.name = self.name.strip()
+            if not self.name:
+                raise ValueError('Category name cannot be blank')
+        return self
+
+
+class CategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    name: str
+    color: CategoryColor
+    position: float
+
+
+class CategoryAssign(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    category_id: UUID | None
+
+
 class TaskOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     name: str
     description: str
+    category_id: UUID | None = None
     deadline: date | None = None
     unit: str
     target: int
@@ -330,6 +378,7 @@ class MutationResponse(BaseModel):
     today: date
     timezone: str
     tasks: list[TaskOut]
+    categories: list[CategoryOut] = Field(default_factory=list)
     archived_tasks: list[TaskOut] = Field(default_factory=list)
     rewards: list[RewardOut]
     stats: Stats

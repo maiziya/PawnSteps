@@ -8,12 +8,49 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import get_owner_id
 from app.database import get_session
 from app.schemas import CourseUpdate, DayPlanUpdate, HistoryResponse, MutationResponse, ProgressDecrement, ProgressRecordCreate, ProgressRecordDays, ProgressRecordList, ProgressRecordPatch, Reorder, RewardCreate, RewardPatch, TaskCreate, TaskPatch, UndoRequest
-from app.services import tracker
+from app.services import tracker, categories
+from app.schemas import CategoryAssign, CategoryCreate, CategoryPatch
 
 
 router = APIRouter(prefix='/api', tags=['tracking'])
 Session = Annotated[AsyncSession, Depends(get_session)]
 OwnerId = Annotated[str, Depends(get_owner_id)]
+
+
+@router.get('/categories', response_model=MutationResponse)
+async def category_state(session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await tracker.snapshot(session, owner_id)
+
+
+@router.post('/categories', response_model=MutationResponse, status_code=201)
+async def create_category(body: CategoryCreate, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await categories.create(session, owner_id, body)
+
+
+@router.post('/categories/reorder', response_model=MutationResponse)
+async def reorder_categories(body: Reorder, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await categories.reorder(session, owner_id, body.ids)
+
+
+@router.patch('/categories/{category_id}', response_model=MutationResponse)
+async def edit_category(category_id: UUID, body: CategoryPatch, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await categories.edit(session, owner_id, category_id, body)
+
+
+@router.delete('/categories/{category_id}', response_model=MutationResponse)
+async def remove_category(category_id: UUID, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await categories.remove(session, owner_id, category_id)
+
+
+@router.put('/tasks/{task_id}/category', response_model=MutationResponse)
+async def assign_category(task_id: UUID, body: CategoryAssign, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await categories.assign(session, owner_id, task_id, body.category_id)
 
 
 @router.get('/state', response_model=MutationResponse)

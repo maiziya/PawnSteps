@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { ArchivePanel } from "@/components/archive-panel";
+import { CategoryFilter, matchesCategory } from "@/components/task-categories";
 import { TaskCard } from "@/components/task-card";
 import { TaskForm, type TaskKind } from "@/components/task-form";
 import { TaskProgress } from "@/components/task-progress";
@@ -42,7 +43,7 @@ type View = typeof navigation[number]["id"];
 const taskDragModifiers: Modifiers = [({ transform }) => ({ ...transform, x: 0 })];
 
 export function Dashboard() {
-  const { tasks, archivedTasks, rewards, stats, user, timezone, todayPlan, loading, busy, error, dark, muted, unlocked, quickFeedback, progressFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
+  const { tasks, archivedTasks, selectedCategory, selectCategory, rewards, stats, user, timezone, todayPlan, loading, busy, error, dark, muted, unlocked, quickFeedback, progressFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
   const [view, setView] = useState<View>("tasks");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -102,7 +103,7 @@ export function Dashboard() {
   const hasTasks = tasks.length > 0 || archivedTasks.length > 0;
   const planIds = pendingPlanOrder?.date === todayPlan.date ? pendingPlanOrder.ids : todayPlan.task_ids;
   const planPositions = new Map(planIds.map((id, index) => [id, index]));
-  const visible = tasks.filter(task => task.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || (filter === "today" && planPositions.has(task.id)) || (filter === "daily" && (task.daily_quota > 0 || task.daily_minimum > 0 || task.daily_plan !== null)) || (filter === "course" && task.course_items !== null) || (filter === "done" && task.is_done)));
+  const visible = tasks.filter(task => matchesCategory(task, selectedCategory) && task.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || (filter === "today" && planPositions.has(task.id)) || (filter === "daily" && (task.daily_quota > 0 || task.daily_minimum > 0 || task.daily_plan !== null)) || (filter === "course" && task.course_items !== null) || (filter === "done" && task.is_done)));
   const quickHolds = new Set(tasks.filter(task => {
     const feedback = quickFeedback[task.id];
     return filter !== "done" && task.is_done && feedback && feedback.phase !== "failed" && (feedback.keepVisible || (!feedback.wasComplete && feedback.previousProgress < task.target));
@@ -164,9 +165,13 @@ export function Dashboard() {
     if (!event.over || event.active.id === event.over.id || busy || pendingOrderRef.current) return;
     const isPlanOrder = filter === "today", owner = ownerIdentity(), planDate = todayPlan.date;
     const ids = isPlanOrder ? todayPlan.task_ids : tasks.filter(task => !task.is_done).map(task => task.id);
-    const from = ids.indexOf(String(event.active.id)), to = ids.indexOf(String(event.over.id));
+    const scope = isPlanOrder ? ids : ids.filter(id => visible.some(task => task.id === id));
+    const from = scope.indexOf(String(event.active.id)), to = scope.indexOf(String(event.over.id));
     if (from < 0 || to < 0) return;
-    const nextOrder = arrayMove(ids, from, to);
+    const scopedOrder = arrayMove(scope, from, to);
+    const scopedSet = new Set(scope);
+    let cursor = 0;
+    const nextOrder = isPlanOrder ? scopedOrder : ids.map(id => scopedSet.has(id) ? scopedOrder[cursor++] : id);
     const keyboardHandle = event.activatorEvent.type === 'keydown' && document.activeElement instanceof HTMLElement ? document.activeElement : null;
     pendingOrderRef.current = nextOrder;
     if (isPlanOrder) setPendingPlanOrder({ date: planDate, ids: nextOrder }); else setPendingOrder(nextOrder);
@@ -258,10 +263,10 @@ export function Dashboard() {
               <button onClick={() => changeView("rewards")} aria-label="查看下个里程碑"><Gift size={17} /><span>{nextMilestone ? "下个里程碑" : "我的奖励"}<strong>{nextMilestone ? `${nextMilestone.streak_target} 天` : "查看成就"}{nextMilestone && <small className="milestone-distance">还差 {nextMilestone.streak_target! - stats.streak} 天</small>}</strong></span><ArrowRight size={15} className="summary-arrow" /></button>
             </section>
             <section className="task-section" aria-label="任务列表">
-              <div className="task-toolbar"><div className="filter-tabs" role="group" aria-label="筛选任务">{[["all", "全部"], ["today", "今日"], ["daily", "每日打卡"], ["course", "课程学习"], ["done", "已完成"], ["archive", "归档"]].map(([id, title]) => <button key={id} aria-label={id === "today" ? "今日计划" : id === "archive" ? "归档任务" : title} aria-pressed={filter === id} onClick={() => chooseFilter(id)} className={filter === id ? "selected" : ""}><span className="task-filter-label-long">{title}</span><span className="task-filter-label-short">{id === "daily" ? "打卡" : id === "course" ? "课程" : title}</span></button>)}</div><button className="day-plan-adjust" aria-label="调整今日计划" title="调整今日计划" disabled={busy} onClick={() => setPlanPickerOpen(true)}><CalendarCheck2 size={17} /><span>{filter === "today" ? "调整计划" : "安排今天"}</span></button></div>
-              {filter === "archive" ? <ArchivePanel query={query} onOpenRecords={setRecordTaskId} onOpenCourse={openCourse} onRestored={task => { setQuery(""); chooseFilter(task.is_done ? "done" : "all"); }} /> : <>
+              <div className="task-toolbar"><div className="filter-tabs" role="group" aria-label="筛选任务">{[["all", "全部"], ["today", "今日"], ["daily", "每日打卡"], ["course", "课程学习"], ["done", "已完成"], ["archive", "归档"]].map(([id, title]) => <button key={id} aria-label={id === "today" ? "今日计划" : id === "archive" ? "归档任务" : title} aria-pressed={filter === id} onClick={() => chooseFilter(id)} className={filter === id ? "selected" : ""}><span className="task-filter-label-long">{title}</span><span className="task-filter-label-short">{id === "daily" ? "打卡" : id === "course" ? "课程" : id === "done" ? "完成" : title}</span></button>)}</div><div className="task-toolbar-actions"><CategoryFilter /><button className="day-plan-adjust" aria-label="调整今日计划" title="调整今日计划" disabled={busy} onClick={() => setPlanPickerOpen(true)}><CalendarCheck2 size={17} /><span>{filter === "today" ? "调整计划" : "安排今天"}</span></button></div></div>
+              {filter === "archive" ? <ArchivePanel query={query} categoryFilter={selectedCategory} onOpenRecords={setRecordTaskId} onOpenCourse={openCourse} onRestored={task => { setQuery(""); chooseFilter(task.is_done ? "done" : "all"); }} /> : <>
               {filter === "today" && todayPlan.task_ids.length > 0 && <div className="today-plan-caption"><strong>今天最重要的 {todayPlan.task_ids.length} 项</strong><span>最多选 3 项 · 进度沿用原任务</span></div>}
-              {filter === "today" && !todayPlan.task_ids.length ? <div className="today-plan-empty"><CalendarCheck2 size={27} /><h2>今天，先做好几件重要的事</h2><p>从已有任务中挑选 1–3 项，给今天一个清晰的方向。</p><Button variant="secondary" onClick={() => setPlanPickerOpen(true)}>选择今日任务<ArrowRight size={16} /></Button></div> : !visible.length && <div className="empty-state"><span className="empty-symbol"><Search size={25} /></span><h2>{!tasks.length ? "任务已收起，积累仍在" : "这里暂时没有匹配的任务"}</h2><p>{!tasks.length ? "可以创建新的目标，或从归档中恢复任务。" : "换个关键词，或者看看其他分类。"}</p><Button variant="secondary" onClick={() => { setQuery(""); chooseFilter(!tasks.length ? "archive" : "all"); }}>{!tasks.length ? "查看归档" : "查看全部任务"}<ArrowRight size={16} /></Button></div>}
+              {filter === "today" && !todayPlan.task_ids.length ? <div className="today-plan-empty"><CalendarCheck2 size={27} /><h2>今天，先做好几件重要的事</h2><p>从已有任务中挑选 1–3 项，给今天一个清晰的方向。</p><Button variant="secondary" onClick={() => setPlanPickerOpen(true)}>选择今日任务<ArrowRight size={16} /></Button></div> : !visible.length && <div className="empty-state"><span className="empty-symbol"><Search size={25} /></span><h2>{!tasks.length ? "任务已收起，积累仍在" : "这里暂时没有匹配的任务"}</h2><p>{!tasks.length ? "可以创建新的目标，或从归档中恢复任务。" : "换个关键词，或者看看其他分类。"}</p><Button variant="secondary" onClick={() => { setQuery(""); selectCategory("all"); chooseFilter(!tasks.length ? "archive" : "all"); }}>{!tasks.length ? "查看归档" : "查看全部任务"}<ArrowRight size={16} /></Button></div>}
               <DndContext sensors={sensors} modifiers={taskDragModifiers} collisionDetection={closestCenter} onDragEnd={reorder}>
                 <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
                   <div className="task-list"><AnimatePresence initial={false}>{active.map(task => <motion.div key={task.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TaskCard task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} focusAction={filter === "today"} /></motion.div>)}</AnimatePresence></div>

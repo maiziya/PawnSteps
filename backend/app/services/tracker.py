@@ -15,8 +15,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import DailyHistory, FocusSession, Owner, ProgressAdjustment, ProgressRecord, Reward, Task, TaskArchivePeriod, TaskSchedule
-from app.schemas import CourseUpdate, DayPlanUpdate, ProgressRecordCreate, ProgressRecordOut, ProgressRecordPatch, RewardCreate, RewardOut, RewardPatch, ScheduleConfig, TaskCreate, TaskOut, TaskPatch
+from app.models import DailyHistory, FocusSession, Owner, ProgressAdjustment, ProgressRecord, Reward, Task, TaskCategory, TaskArchivePeriod, TaskSchedule
+from app.schemas import CategoryOut, CourseUpdate, DayPlanUpdate, ProgressRecordCreate, ProgressRecordOut, ProgressRecordPatch, RewardCreate, RewardOut, RewardPatch, ScheduleConfig, TaskCreate, TaskOut, TaskPatch
 
 
 from app.services import day_plan, schedules
@@ -278,6 +278,7 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
     return {
         'today': day,
         'timezone': settings.timezone,
+        'categories': [CategoryOut.model_validate(row) for row in (await session.scalars(select(TaskCategory).where(TaskCategory.owner_id == owner_id).order_by(TaskCategory.position, TaskCategory.id))).all()],
         'today_plan': await day_plan.projection(session, owner_id, day),
         'tasks': [TaskOut.model_validate(task) for task in sorted(tasks, key=lambda task: (task.is_done, task.position, task.created_at)) if task.archived_at is None],
         'archived_tasks': [TaskOut.model_validate(task) for task in sorted(
@@ -314,6 +315,9 @@ async def create_task(session: AsyncSession, owner_id: str, body: TaskCreate) ->
     await _unique_name(session, owner_id, body.name)
     if body.reward_id:
         await get_reward(session, owner_id, body.reward_id)
+    if body.category_id:
+        from app.services.categories import get_category
+        await get_category(session, owner_id, body.category_id)
     values = body.model_dump()
     schedule = values.pop('schedule')
     if body.daily_plan is not None:
@@ -335,8 +339,11 @@ async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body:
     require_active(task)
     values = body.model_dump(exclude_unset=True)
     for key, value in values.items():
-        if value is None and key not in {'reward_id', 'deadline'} and not (key == 'daily_goal' and task.course_items is not None):
+        if value is None and key not in {'reward_id', 'deadline', 'category_id'} and not (key == 'daily_goal' and task.course_items is not None):
             raise HTTPException(422, f'{key} cannot be null')
+    if values.get('category_id'):
+        from app.services.categories import get_category
+        await get_category(session, owner_id, values['category_id'])
     requested_schedule = values.pop('schedule', None)
     if 'name' in values:
         await _unique_name(session, owner_id, values['name'], task.id)

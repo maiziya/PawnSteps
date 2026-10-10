@@ -12,6 +12,7 @@ import { parseCourseDirectory, parseCourseText } from '@/lib/course';
 import { useAppStore } from '@/lib/store';
 import { everydaySchedule, ScheduleOptions, ScheduleSelect } from '@/components/schedule-fields';
 import type { CourseItem, Task, TaskSchedule } from '@/lib/types';
+import { CategoryManager } from './task-categories';
 import './task-form.css';
 
 const formSchema = z.object({
@@ -21,6 +22,7 @@ const formSchema = z.object({
   target: z.string().refine(value => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 100, '请输入 1–100 的整数'),
   priority: z.enum(['high', 'medium', 'low']),
   rewardId: z.string(),
+  categoryId: z.string(),
   dailyGoal: z.string().refine(value => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 10000, '每日目标量为 1–10000 的整数'),
   dailyQuota: z.string().refine(value => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 10000, '最小完成量为 1–10000 的整数'),
   plan: z.string(),
@@ -56,6 +58,7 @@ function defaultValues(task?: Task | null, kind: TaskKind = 'normal'): FormValue
     target: String(task && !task.daily_plan && !task.course_items ? task.target : 10),
     priority: task?.priority || 'medium',
     rewardId: task?.reward_id || '',
+    categoryId: task ? task.category_id || '' : useAppStore.getState().categories.find(category => category.id === useAppStore.getState().selectedCategory)?.id || '',
     dailyGoal: String(task?.daily_goal ?? (task?.daily_quota || task?.daily_minimum || (kind === 'course' ? Math.min(3, task?.target || 3) : 1))),
     dailyQuota: String(task?.daily_quota || task?.daily_minimum || 1),
     plan: task?.daily_plan?.join(', ') || '10, 10, 0, 10, -1, 10, 5',
@@ -66,6 +69,7 @@ function defaultValues(task?: Task | null, kind: TaskKind = 'normal'): FormValue
 }
 
 export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: { open: boolean; onOpenChange: (open: boolean) => void; task?: Task | null; initialKind?: TaskKind }) {
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [kind, setKind] = useState<TaskKind>('normal');
   const [courseDaily, setCourseDaily] = useState(true);
   const [schedule, setSchedule] = useState<TaskSchedule>(everydaySchedule);
@@ -76,6 +80,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   const [importing, setImporting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const directoryInput = useRef<HTMLInputElement>(null);
+  const categories = useAppStore(state => state.categories);
   const rewards = useAppStore(state => state.rewards);
   const busy = useAppStore(state => state.busy);
   const mutate = useAppStore(state => state.mutate);
@@ -154,6 +159,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
       deadline: values.deadline || null,
       priority: values.priority,
       reward_id: values.rewardId || null,
+      category_id: values.categoryId || null,
       unit,
     };
     if (kind === 'normal' || kind === 'daily') {
@@ -203,7 +209,12 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   }
 
   const updateSchedule = (value: TaskSchedule) => { setSchedule(value); clearErrors('root.schedule'); };
+  const selectedCategoryId = watch('categoryId');
+  useEffect(() => {
+    if (selectedCategoryId && !categories.some(category => category.id === selectedCategoryId)) setValue('categoryId', '');
+  }, [selectedCategoryId, categories, setValue]);
   const additionalFields = <>
+          <div className="space-y-1.5"><div className="task-deadline-label"><label htmlFor="task-category">分类 <span className="muted">可选</span></label><button type="button" onClick={() => setCategoryManagerOpen(true)}>管理分类</button></div><select id="task-category" aria-label="分类" className="field" {...register('categoryId')}><option value="">未分类</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div>
           <div className="space-y-1.5"><div className="task-deadline-label"><label htmlFor="task-deadline" className="text-sm font-medium">截止日期 <span className="font-normal text-[var(--muted)]">可选</span></label>{deadline && <button type="button" onClick={() => {
             setValue('deadline', '', { shouldDirty: true, shouldValidate: true });
             // Reset WebKit's native date editor, which can block submission after an imperative clear.
@@ -222,7 +233,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   </>;
 
   return (
-    <Dialog open={open} onOpenChange={next => { if (!pending) onOpenChange(next); }}>
+    <><CategoryManager open={categoryManagerOpen && open} onClose={() => setCategoryManagerOpen(false)} /><Dialog open={open} onOpenChange={next => { if (!pending) onOpenChange(next); }}>
       <DialogContent className="task-form-dialog">
         <DialogHeader>
           <DialogTitle>{task ? '调整你的目标' : '从一个小目标开始'}</DialogTitle>
@@ -270,10 +281,10 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
               <div className="space-y-1.5"><label htmlFor="course-goal">每日目标量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-goal" aria-label="每日目标量" type="number" min={1} max={courseCount || 10000} {...register('dailyGoal')} />{errors.dailyGoal && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyGoal.message}</p>}</div>
             </div>}
           </div>}
-          <details className="task-course-options"><summary>截止日期、优先级与备注<ChevronDown size={16} /></summary><div className="task-form-fields">{additionalFields}</div></details>
+          <details className="task-course-options"><summary>分类、截止日期与更多设置<ChevronDown size={16} /></summary><div className="task-form-fields">{additionalFields}</div></details>
           <div className="task-form-footer"><Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>取消</Button><Button type="submit" disabled={pending}>{pending && <LoaderCircle size={16} className="animate-spin" />}{task ? '保存调整' : '创建任务'}</Button></div>
         </form>
       </DialogContent>
-    </Dialog>
+    </Dialog></>
   );
 }

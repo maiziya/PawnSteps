@@ -1,6 +1,9 @@
 export interface CourseItem { name: string; done: boolean; done_date?: string | null }
 export interface TaskSchedule { mode: "daily" | "weekdays" | "weekly"; weekdays: number[]; weekly_target: number | null }
+export type CategoryColor = "clay" | "sage" | "ochre" | "slate" | "rose" | "lavender";
+export interface TaskCategory { id: string; name: string; color: CategoryColor; position: number }
 export interface Task {
+  category_id?: string | null;
   id: string; name: string; description: string; deadline?: string | null; target: number; progress: number;
   is_done: boolean; done_at: string | null; priority: "high" | "medium" | "low";
   position: number; reward_id: string | null; daily_goal: number | null; daily_minimum: number; daily_quota: number; daily_progress: number;
@@ -33,6 +36,7 @@ export interface User {
 }
 export interface TodayPlan { date: string; task_ids: string[] }
 export interface MutationResponse {
+  categories?: TaskCategory[];
   tasks: Task[]; archived_tasks?: Task[]; rewards: Reward[]; stats: Stats; unlocked_reward: Reward | null;
   today: string; timezone: string;
   undo_token?: string | null; access_token?: string | null; user?: User | null;
