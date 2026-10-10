@@ -104,6 +104,22 @@ def project(task: Task, day: date) -> None:
     task.schedule = config
     task.is_scheduled_today = due_on(task, day) if enabled_on(task, day) else True
     task.weekly_completed, task.weekly_target = weekly_progress(task, day)
+    pending = sorted((row for row in task.schedules if row.starts_on > day), key=lambda row: row.starts_on)
+    task.pending_schedule = (ScheduleConfig(mode=pending[0].mode, weekdays=pending[0].weekdays,
+                                           weekly_target=pending[0].weekly_target) if pending else None)
+    task.pending_schedule_date = pending[0].starts_on if pending else None
+
+
+def counts_today(task: Task, day: date) -> bool:
+    """Keep optional work out of today's obligations, including after a weekly target is met."""
+    if not active_on(task, day):
+        return False
+    config, _ = configuration(task, day)
+    if config.mode == 'weekly':
+        count, target = weekly_progress(task, day)
+        achieved_today = any(row.date == day and row.completed and row.quota > 0 for row in task.history)
+        return count - int(achieved_today) < (target or 1)
+    return due_on(task, day)
 
 
 def rest_day(tasks: list[Task], day: date) -> bool:
@@ -112,7 +128,8 @@ def rest_day(tasks: list[Task], day: date) -> bool:
 
 
 def streak(tasks: list[Task], day: date) -> int:
-    earned = {row.date for task in tasks for row in task.history if row.completed and row.date <= day}
+    earned = {row.date for task in tasks for row in task.history
+              if row.completed and row.quota > 0 and row.progress > 0 and row.date <= day}
     if not earned:
         return 0
     first = min(earned)

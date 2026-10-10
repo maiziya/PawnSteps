@@ -123,3 +123,83 @@ async def test_schedule_validation_and_owner_isolation(client, guest_headers, ot
     response = await client.patch(f"/api/tasks/{task['id']}", headers=other_guest_headers,
                                   json={'schedule': {'mode': 'weekdays', 'weekdays': [1]}})
     assert response.status_code == 404
+
+
+async def test_frequency_change_starts_tomorrow_and_survives_unrelated_edits(client, guest_headers, frozen_day):
+    frozen_day['date'] = date(2026, 10, 5)
+    task = await create_task(client, guest_headers, target=100, daily_minimum=2)
+    await add_record(client, guest_headers, task['id'], 2)
+    changed = assert_mutation(await client.patch(f"/api/tasks/{task['id']}", headers=guest_headers,
+        json={'schedule': {'mode': 'weekdays', 'weekdays': [4]}}))
+    row = changed['tasks'][0]
+    assert row['schedule']['mode'] == 'daily' and row['is_scheduled_today']
+    assert row['pending_schedule']['weekdays'] == [4]
+    assert row['pending_schedule_date'] == '2026-10-06'
+    renamed = assert_mutation(await client.patch(f"/api/tasks/{task['id']}", headers=guest_headers,
+        json={'name': 'Renamed practice'}))
+    assert renamed['tasks'][0]['pending_schedule'] == row['pending_schedule']
+    assert renamed['stats']['today_completed'] == renamed['stats']['today_total'] == 1
+    frozen_day['date'] += timedelta(days=1)
+    next_day = await state(client, guest_headers)
+    assert next_day['tasks'][0]['schedule']['weekdays'] == [4]
+    assert next_day['tasks'][0]['pending_schedule'] is None
+    assert not next_day['tasks'][0]['is_scheduled_today']
+    assert next_day['stats']['streak'] == 1 and next_day['stats']['today_total'] == 0
+    history = (await client.get('/api/history?week_of=2026-10-05', headers=guest_headers)).json()
+    assert '2026-10-05' not in history['rest_dates']
+    assert history['history'][0]['amount'] == 2
+
+
+async def test_pending_frequency_can_be_replaced_or_cancelled(client, guest_headers, frozen_day):
+    frozen_day['date'] = date(2026, 12, 31)
+    task = await create_task(client, guest_headers, target=100, daily_minimum=1)
+    for weekdays in [[0], [4]]:
+        changed = assert_mutation(await client.patch(f"/api/tasks/{task['id']}", headers=guest_headers,
+            json={'schedule': {'mode': 'weekdays', 'weekdays': weekdays}}))
+        assert changed['tasks'][0]['pending_schedule']['weekdays'] == weekdays
+        assert changed['tasks'][0]['pending_schedule_date'] == '2027-01-01'
+    assert_mutation(await client.patch(f"/api/tasks/{task['id']}", headers=guest_headers,
+        json={'schedule': {'mode': 'daily'}}))
+    frozen_day['date'] += timedelta(days=1)
+    assert (await state(client, guest_headers))['tasks'][0]['schedule']['mode'] == 'daily'
+
+
+async def test_rest_day_work_does_not_inflate_today_obligations(client, guest_headers, frozen_day):
+    frozen_day['date'] = date(2026, 10, 6)
+    task = await create_task(client, guest_headers, target=100, daily_minimum=2,
+        schedule={'mode': 'weekdays', 'weekdays': [0]})
+    await create_task(client, guest_headers, 'Required today', target=100, daily_minimum=2)
+    achieved = await add_record(client, guest_headers, task['id'], 2)
+    assert achieved['stats']['today_total'] == 1 and achieved['stats']['today_completed'] == 0
+    assert achieved['stats']['streak'] == 1
+    history = (await client.get('/api/history?month=2026-10', headers=guest_headers)).json()
+    assert '2026-10-06' not in history['rest_dates']
+    assert history['history'][0]['completed']
+    from uuid import uuid4
+    corrected = assert_mutation(await client.post(f"/api/tasks/{task['id']}/decrement", headers=guest_headers,
+        json={'request_id': str(uuid4())}))
+    assert corrected['stats']['streak'] == 0
+    assert not next(row for row in corrected['tasks'] if row['id'] == task['id'])['daily_done']
+
+
+async def test_weekly_required_completion_counts_today_but_extra_day_does_not(client, guest_headers, frozen_day):
+    frozen_day['date'] = date(2026, 10, 5)
+    task = await create_task(client, guest_headers, target=100, daily_minimum=1,
+        schedule={'mode': 'weekly', 'weekly_target': 1})
+    achieved = await add_record(client, guest_headers, task['id'], 1)
+    assert achieved['stats']['today_total'] == achieved['stats']['today_completed'] == 1
+    frozen_day['date'] += timedelta(days=1)
+    extra = await add_record(client, guest_headers, task['id'], 1)
+    assert extra['tasks'][0]['weekly_completed'] == 2
+    assert extra['stats']['today_total'] == extra['stats']['today_completed'] == 0
+    assert extra['stats']['streak'] == 2
+
+
+async def test_array_plan_rests_do_not_earn_streak_or_daily_completion(client, guest_headers, frozen_day):
+    frozen_day['date'] = date(2026, 10, 5)
+    task = await create_task(client, guest_headers, daily_plan=[1, 0, -1, 1], plan_start_date='2026-10-05')
+    await add_record(client, guest_headers, task['id'], 1)
+    frozen_day['date'] += timedelta(days=2)
+    rest = await state(client, guest_headers)
+    assert rest['stats']['streak'] == 1
+    assert rest['stats']['today_completed'] == rest['stats']['today_total'] == 0

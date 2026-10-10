@@ -235,6 +235,8 @@ class TaskOut(BaseModel):
     record_count: int
     plan_expired: bool
     schedule: ScheduleConfig
+    pending_schedule: ScheduleConfig | None = None
+    pending_schedule_date: date | None = None
     is_scheduled_today: bool
     weekly_completed: int
     weekly_target: int | None

@@ -260,7 +260,8 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
             unlocked = reward
     await session.flush()
     completed = sum(task.is_done for task in tasks)
-    daily_tasks = [task for task in tasks if (task.daily_quota > 0 or task.daily_minimum > 0 or task.daily_plan is not None) and (task.is_scheduled_today or task.daily_done) and (not task.is_done or task.daily_done) and (task.plan_start_date is None or task.plan_start_date <= day)]
+    daily_tasks = [task for task in tasks if schedules.counts_today(task, day)
+                   and (not task.is_done or task.daily_done)]
     return {
         'today': day,
         'timezone': settings.timezone,
@@ -344,11 +345,16 @@ async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body:
             raise HTTPException(422, 'Daily goal cannot be lower than the daily minimum')
         if not task.daily_quota and daily_goal > values.get('target', task.target):
             raise HTTPException(422, 'Daily goal cannot exceed the total target')
-    config = ScheduleConfig.model_validate(requested_schedule) if requested_schedule is not None else schedules.configuration(task, today())[0]
+    effective_on = today() + timedelta(days=1)
+    config = ScheduleConfig.model_validate(requested_schedule) if requested_schedule is not None else schedules.configuration(task, effective_on)[0]
     enabled = bool(values.get('daily_quota', task.daily_quota) or values.get('daily_minimum', task.daily_minimum) or task.daily_plan is not None)
     if config.mode != 'daily' and (not enabled or task.daily_plan is not None):
         raise HTTPException(422, 'Flexible schedules require a minimum and cannot override a day-by-day plan')
-    schedules.set_schedule(task, today(), config, enabled)
+    # Frequency changes apply tomorrow; editing other fields must retain a pending change.
+    if enabled != schedules.enabled_on(task, today()):
+        current = schedules.configuration(task, today())[0] if enabled else ScheduleConfig()
+        schedules.set_schedule(task, today(), current, enabled)
+    schedules.set_schedule(task, effective_on, config, enabled)
     for key, value in values.items():
         setattr(task, key, value)
     if 'daily_minimum' in values:
