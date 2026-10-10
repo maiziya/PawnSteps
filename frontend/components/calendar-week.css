@@ -31,8 +31,11 @@
 .calendar-week-detail .calendar-detail-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .calendar-week-detail .calendar-detail-heading>span { color: var(--muted); font-size: 12px; }
 .calendar-week-detail h3:focus { outline: none; }
-.calendar-week-detail .calendar-completed-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 28px; }
-.calendar-week-detail .calendar-completed-list li:nth-child(2) { border-top: 0; }
+.calendar-week-detail .calendar-completed-list { display: block; }
+.calendar-week-detail .calendar-completed-list li { align-items: center; padding: 10px 0; }
+.calendar-week-detail .calendar-entry-progress { width: 230px; max-width: none; }
+.calendar-week-detail .calendar-entry-progress>div[aria-hidden="true"] { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); column-gap: 16px; align-items: center; }
+.calendar-week-detail .calendar-entry-status { margin-top: 0; }
 .calendar-week-detail .calendar-detail-empty { min-height: 68px; flex-direction: row; padding: 12px 0 0; gap: 10px; }
 .collections-panel .calendar-week-date:focus-visible { outline-offset: -3px; }
 
@@ -41,15 +44,12 @@
   .calendar-week-preview { display: none; }
   .calendar-week-date { border-bottom: 0; }
 }
-@media (min-width: 1200px) {
-  .calendar-week-detail .calendar-completed-list { grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 20px; }
-  .calendar-week-detail .calendar-completed-list li:nth-child(3) { border-top: 0; }
-}
 @media (max-width: 900px) {
   .calendar-week-preview { display: none; }
   .calendar-week-date { border-bottom: 0; }
-  .calendar-week-detail .calendar-completed-list { display: block; }
-  .calendar-week-detail .calendar-completed-list li:nth-child(2) { border-top: 1px solid var(--line); }
+  .calendar-week-detail .calendar-entry-progress { width: auto; max-width: 145px; }
+  .calendar-week-detail .calendar-entry-progress>div[aria-hidden="true"] { display: block; }
+  .calendar-week-detail .calendar-entry-status { margin-top: 2px; }
 }
 @media (max-width: 650px) {
   .calendar-toolbar { gap: 8px; margin-bottom: 8px; }

@@ -17,6 +17,7 @@ export function DayPlanPicker({ open, onClose, onSaved }: { open: boolean; onClo
   const tasks = useAppStore(state => state.tasks), plan = useAppStore(state => state.todayPlan), userId = useAppStore(state => state.user?.id), busy = useAppStore(state => state.busy);
   const [selected, setSelected] = useState<string[]>([]), [query, setQuery] = useState(''), [saving, setSaving] = useState(false);
   const origin = useRef<{ owner: string; date: string } | null>(null);
+  const title = useRef<HTMLHeadingElement>(null);
   const taskNames = useRef(new Map<string, string>());
   const onCloseRef = useRef(onClose); onCloseRef.current = onClose;
   useEffect(() => {
@@ -53,8 +54,8 @@ export function DayPlanPicker({ open, onClose, onSaved }: { open: boolean; onClo
       if (error instanceof ApiError && [404, 409].includes(error.status)) await useAppStore.getState().refresh();
     } finally { setSaving(false); }
   }
-  return <Dialog open={open} onOpenChange={value => { if (!value && !saving) onClose(); }}><DialogContent className="day-plan-dialog">
-    <div className="day-plan-heading"><DialogTitle>今天最重要的事</DialogTitle><DialogDescription>从已有任务里选出最多 3 项，按你的节奏推进。</DialogDescription></div>
+  return <Dialog open={open} onOpenChange={value => { if (!value && !saving) onClose(); }}><DialogContent className="day-plan-dialog" onOpenAutoFocus={event => { event.preventDefault(); title.current?.focus({ preventScroll: true }); }}>
+    <div className="day-plan-heading"><DialogTitle ref={title} tabIndex={-1}>今天最重要的事</DialogTitle><DialogDescription>从已有任务里选出最多 3 项，按你的节奏推进。</DialogDescription></div>
     {candidates.length > 6 && <div className="day-plan-search"><Search size={16} /><Input aria-label="搜索计划任务" placeholder="搜索任务" value={query} onChange={event => setQuery(event.target.value)} /></div>}
     <div className="day-plan-options" role="group" aria-label="选择今日任务">{visible.length ? visible.map(task => {
       const checked = selected.includes(task.id), canSelect = eligible(task), Icon = task.course_items ? BookOpen : task.daily_quota > 0 ? Sun : Flag;

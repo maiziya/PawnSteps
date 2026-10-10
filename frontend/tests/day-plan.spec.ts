@@ -23,6 +23,28 @@ async function choose(page: import('@playwright/test').Page, names: string[]) {
   await dialog.getByRole('button', { name: '保存计划', exact: true }).click(); await expect(dialog).toBeHidden();
 }
 
+test('opening a searchable picker starts at its title and supports keyboard search and selection', async ({ page }, testInfo) => {
+  const { tasks, headers } = await seed(page, 8);
+  await page.getByRole('button', { name: '调整今日计划', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '今天最重要的事', exact: true });
+  const search = dialog.getByRole('textbox', { name: '搜索计划任务', exact: true });
+  await expect(dialog.getByRole('heading', { name: '今天最重要的事', exact: true })).toBeFocused();
+  await expect(search).not.toBeFocused();
+  await page.screenshot({ path: testInfo.outputPath('day-plan-picker-default.png') });
+  await page.keyboard.press('Tab'); await expect(search).toBeFocused();
+  await search.fill(tasks[6].name);
+  await expect(dialog.getByRole('checkbox')).toHaveCount(1);
+  await page.screenshot({ path: testInfo.outputPath('day-plan-picker-search.png') });
+  const checkbox = dialog.getByRole('checkbox');
+  // Native Tab traversal differs with Safari's keyboard-navigation preferences.
+  await checkbox.focus(); await expect(checkbox).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(checkbox).toBeChecked();
+  await dialog.getByRole('button', { name: '保存计划', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect((await saved(page, headers)).today_plan.task_ids).toEqual([tasks[6].id]);
+});
+
 test('selection caps at three, preserves click order and reloads directly into today scope', async ({ page }) => {
   const { tasks, headers } = await seed(page);
   await page.getByRole('button', { name: '调整今日计划', exact: true }).click();
