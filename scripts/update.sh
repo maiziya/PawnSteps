@@ -165,6 +165,14 @@ if ! $force && [[ -f "$current_state" ]] && [[ $(cat "$current_state") == "$fing
 fi
 
 say '构建新版镜像，现有站点保持运行…'
+project_name=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$database")
+[[ -n "$project_name" && "$project_name" != '<no value>' ]] || fail '无法确认镜像所属项目'
+rollback_version="$(date -u +%Y%m%dT%H%M%SZ)-$$"
+old_backend_tag="${project_name}-rollback-backend:$rollback_version"
+old_frontend_tag="${project_name}-rollback-frontend:$rollback_version"
+# Keep old image manifests addressable when Compose rebuilds their mutable tags.
+docker image tag "$old_backend_image" "$old_backend_tag"
+docker image tag "$old_frontend_image" "$old_frontend_tag"
 "${compose[@]}" build backend frontend migrate
 "${compose[@]}" exec -T database pg_isready -U pawnsteps -d pawnsteps >/dev/null
 backup_dir="$state_dir/backups/$(date -u +%Y%m%dT%H%M%SZ)-${target:0:12}-$$"
@@ -172,7 +180,7 @@ mkdir -p "$backup_dir"
 cp -- "$env_file" "$backup_dir/environment.env"
 for index in "${!existing_files[@]}"; do cp -- "${existing_files[$index]}" "$backup_dir/compose-$index.yaml"; done
 printf 'checkout_before=%s\ntarget=%s\nbackend_image=%s\nfrontend_image=%s\n' \
-  "$checkout_before" "$target" "$old_backend_image" "$old_frontend_image" > "$backup_dir/release.txt"
+  "$checkout_before" "$target" "$old_backend_tag" "$old_frontend_tag" > "$backup_dir/release.txt"
 
 say '进入维护阶段，备份数据库和本地上传图片…'
 maintenance=true
@@ -181,7 +189,7 @@ maintenance=true
 [[ -s "$backup_dir/database.dump" ]] || fail '数据库备份为空'
 "${compose[@]}" exec -T database pg_restore --list < "$backup_dir/database.dump" >/dev/null
 docker run --rm --network none --volumes-from "$old_backend:ro" --entrypoint tar \
-  "$old_backend_image" -C /app/uploads -czf - . > "$backup_dir/uploads.tar.gz"
+  "$old_backend_tag" -C /app/uploads -czf - . > "$backup_dir/uploads.tar.gz"
 tar -tzf "$backup_dir/uploads.tar.gz" >/dev/null
 
 say '执行数据库迁移…'

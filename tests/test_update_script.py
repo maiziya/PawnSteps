@@ -49,6 +49,8 @@ if args[0] == 'inspect':
         service = service_for(identifier)
         if 'config_files' in template:
             print(state['config_files'])
+        elif 'com.docker.compose.project' in template:
+            print('pawnsteps')
         elif '/etc/nginx/tls' in template:
             print('/test/certificates' if state['tls'] else '')
         elif 'Health' in template:
@@ -62,6 +64,8 @@ if args[0] == 'start':
     for identifier in args[1:]:
         state['running'][service_for(identifier)] = True
     save()
+    sys.exit(0)
+if args[0] == 'image' and args[1] == 'tag':
     sys.exit(0)
 if args[0] == 'run':
     if '--entrypoint' in args and args[args.index('--entrypoint') + 1] == 'python':
@@ -207,6 +211,18 @@ class UpdateScriptTests(unittest.TestCase):
         self.assertLess(dump, migration)
         self.assertFalse(any('down' in call or 'prune' in call for call in calls))
         self.assertFalse((self.server / '.pawnsteps-update.lock').exists())
+
+    def test_previous_images_are_pinned_before_rebuild_and_used_for_image_backup(self):
+        self.publish()
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = self.calls()
+        tags = [(index, call) for index, call in enumerate(calls) if call[:2] == ['image', 'tag']]
+        self.assertEqual(len(tags), 2)
+        build = next(index for index, call in enumerate(calls) if 'build' in call)
+        self.assertTrue(all(index < build for index, call in tags))
+        image_backup = next(call for call in calls if '--entrypoint' in call and 'tar' in call)
+        self.assertIn(tags[0][1][-1], image_backup)
 
     def test_an_already_pulled_checkout_still_deploys_without_a_release_marker(self):
         self.publish()
