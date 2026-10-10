@@ -1,0 +1,55 @@
+import { expect, test } from '@playwright/test';
+import { expectNoHorizontalOverflow, navigate, openWorkspace, persistedState, taskCard } from './helpers';
+
+test('touch scheduling keeps long titles legible and records voluntary rest-day work in both themes', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await openWorkspace(page);
+  const today = (await persistedState(page)).today;
+  const weekday = (new Date(`${today}T12:00:00`).getDay() + 6) % 7;
+  const name = '阅读专业书籍并整理学习笔记，按自己的节奏逐步完成每周安排，保留每一天真实的学习进度';
+  await page.getByRole('button', { name: '添加任务', exact: true }).tap();
+  const form = page.getByRole('dialog');
+  await form.getByLabel('任务名称', { exact: true }).fill(name);
+  await form.getByLabel('目标任务总量', { exact: false }).fill('20');
+  await form.getByLabel('计量单位', { exact: true }).selectOption('个');
+  await form.getByLabel('最小完成量', { exact: true }).fill('2');
+  await form.getByLabel('每日目标量', { exact: true }).fill('5');
+  await form.getByLabel('执行周期', { exact: true }).selectOption('weekdays');
+  await form.getByRole('group', { name: '星期快捷选择' }).getByRole('button', { name: '周末', exact: true }).tap();
+  const days = form.getByRole('group', { name: '执行星期' }).getByRole('button');
+  await expect(days.nth(5)).toHaveAttribute('aria-pressed', 'true');
+  await expect(days.nth(6)).toHaveAttribute('aria-pressed', 'true');
+  for (let index = 0; index < 7; index++) {
+    if ((await days.nth(index).getAttribute('aria-pressed') === 'true') !== (index === (weekday + 1) % 7)) await days.nth(index).tap();
+  }
+  expect(await form.evaluate(element => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(0);
+  await form.getByRole('button', { name: '创建任务', exact: true }).tap();
+  await expect(form).toBeHidden();
+  await page.getByRole('button', { name: '今日休息的任务', exact: true }).tap();
+  const card = taskCard(page, name);
+  await expect(card).toContainText('今日休息');
+  const heading = card.getByRole('heading', { name, exact: true });
+  expect((await heading.boundingBox())!.height).toBeLessThanOrEqual(44);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('frequency-mobile-light.png') });
+  await card.getByRole('button', { name: `${name}增加1个`, exact: true }).tap();
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+  await navigate(page, '打卡日历');
+  await expect(page.locator('.calendar-day[aria-current="date"]')).toHaveClass(/activity-partial/);
+  await expect(page.locator('.calendar-day-detail')).toContainText('差 1 个');
+  await navigate(page, '我的任务');
+  await card.getByRole('button', { name: `${name}增加1个`, exact: true }).tap();
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '2');
+  const achieved = await persistedState(page);
+  expect(achieved.stats.today_total).toBe(0);
+  expect(achieved.stats.today_completed).toBe(0);
+  expect(achieved.stats.streak).toBe(1);
+  await page.getByRole('button', { name: '切换主题', exact: true }).tap();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('frequency-mobile-dark.png') });
+  await navigate(page, '打卡日历');
+  await expect(page.locator('.calendar-day[aria-current="date"]')).toHaveClass(/activity-met/);
+  await expect(page.locator('.calendar-day-detail')).toContainText('已达标');
+  await expectNoHorizontalOverflow(page);
+});

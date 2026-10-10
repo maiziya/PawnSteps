@@ -91,3 +91,40 @@ async def test_simultaneous_day_plan_replacements_are_atomic_without_local_lock(
             DayPlanItem.date == frozen_day["date"]).order_by(DayPlanItem.position))).all()
         assert [row.position for row in rows] == [0, 1, 2]
         assert [str(row.task_id) for row in rows] == final["today_plan"]["task_ids"]
+
+
+async def test_simultaneous_frequency_edits_keep_one_pending_rule_without_local_lock(
+    client, guest_headers, frozen_day, session_factory, postgres_only, monkeypatch
+):
+    from datetime import timedelta
+    from sqlalchemy import select
+
+    from app.models import TaskSchedule
+    from app.services import tracker
+
+    task = await create_task(client, guest_headers, target=100, daily_minimum=1)
+
+    class IndependentWorkerLocks:
+        def setdefault(self, owner_id, lock):
+            return lock
+
+    monkeypatch.setattr(tracker, '_locks', IndependentWorkerLocks())
+    proposals = [{'mode': 'weekdays', 'weekdays': [day]} for day in range(7)]
+    responses = await asyncio.gather(*[
+        client.patch(f"/api/tasks/{task['id']}", headers=guest_headers, json={'schedule': schedule})
+        for schedule in proposals
+    ])
+    for response, schedule in zip(responses, proposals):
+        projected = assert_mutation(response)['tasks'][0]
+        assert projected['schedule']['mode'] == 'daily'
+        assert projected['pending_schedule']['weekdays'] == schedule['weekdays']
+    final = assert_mutation(await client.get('/api/state', headers=guest_headers))['tasks'][0]
+    assert final['pending_schedule']['weekdays'] in [schedule['weekdays'] for schedule in proposals]
+    async with session_factory() as session:
+        from uuid import UUID
+
+        pending = (await session.scalars(select(TaskSchedule).where(
+            TaskSchedule.task_id == UUID(task['id']),
+            TaskSchedule.starts_on == frozen_day['date'] + timedelta(days=1)))).all()
+        assert len(pending) == 1
+        assert pending[0].weekdays == final['pending_schedule']['weekdays']
