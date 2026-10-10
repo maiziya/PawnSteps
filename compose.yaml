@@ -18,6 +18,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
     env_file: ${PAWNSTEPS_ENV_FILE:-.env}
     environment:
       DATABASE_URL: postgresql+asyncpg://pawnsteps:${POSTGRES_PASSWORD}@database:5432/pawnsteps
@@ -29,6 +32,9 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
     env_file: ${PAWNSTEPS_ENV_FILE:-.env}
     environment:
       DATABASE_URL: postgresql+asyncpg://pawnsteps:${POSTGRES_PASSWORD}@database:5432/pawnsteps

@@ -2,7 +2,11 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY backend/requirements.lock ./requirements.lock
-RUN pip install --no-cache-dir -r requirements.lock && useradd --create-home --uid 10001 pawnsteps
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG PIP_TRUSTED_HOST=
+RUN set -- --no-cache-dir --index-url "$PIP_INDEX_URL"; \
+    if [ -n "$PIP_TRUSTED_HOST" ]; then set -- "$@" --trusted-host "$PIP_TRUSTED_HOST"; fi; \
+    pip install "$@" -r requirements.lock && useradd --create-home --uid 10001 pawnsteps
 COPY backend/ .
 RUN mkdir -p uploads && chown -R pawnsteps:pawnsteps /app
 USER pawnsteps
