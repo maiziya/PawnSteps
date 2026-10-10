@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, type CSSProperties, type RefObject } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Check } from 'lucide-react';
 import type { ProgressFeedback } from '@/lib/progress-feedback';
@@ -9,54 +9,81 @@ import './progress-motion.css';
 type ProgressTexture = 'woven' | 'leaf' | 'honeycomb';
 
 const particleDirections = [
-  [-32, -18], [-20, -28], [-6, -32], [12, -30], [26, -20], [32, -4],
-  [22, 16], [8, 25], [-11, 21], [-27, 8], [-38, -5], [4, -23],
-  [18, -12], [-15, -15], [29, 8], [-2, 29],
+  [-23, -12], [-17, 10], [-9, -20], [4, -16], [14, -8], [-26, 2],
+  [-2, 17], [11, 9], [-20, -4], [-13, 18], [17, -15], [-5, -10],
 ] as const;
 
-function ParticleBurst({ count, spread, delay = 0, duration, celebrate }: {
-  count: number; spread: number; delay?: number; duration: number; celebrate: boolean;
-}) {
-  return <>
-    {Array.from({ length: count }, (_, index) => {
-      const direction = particleDirections[index % particleDirections.length];
-      return <i key={index} className={`progress-particle ${index % 7 === 0 ? 'is-spark' : index % 3 === 1 ? 'is-petal' : ''}`} style={{
-        '--particle-x': `${direction[0] * spread}px`,
-        '--particle-y': `${direction[1] * spread}px`,
-        '--particle-turn': `${index % 2 ? 210 : -150}deg`,
-        '--particle-delay': `${delay + index * 10}ms`,
-        '--particle-duration': `${duration}ms`,
-        '--particle-color': `var(${index % 4 === 0 ? '--accent' : index % 4 === 2 ? '--success' : '--progress-ink'})`,
-      } as CSSProperties} />;
-    })}
-    {celebrate && <i className="progress-particle-ring" />}
-  </>;
+interface ParticleEvent {
+  receipt: ProgressFeedback;
+  start: number;
+  end: number;
 }
 
-function ProgressParticles({ receipt, fraction, fill }: {
-  receipt: ProgressFeedback; fraction: number; fill: RefObject<HTMLDivElement | null>;
-}) {
+function ParticleTrail({ event }: { event: ParticleEvent }) {
   const origin = useRef<HTMLSpanElement>(null);
-  const complete = receipt.kind === 'complete';
-  const dailyMet = receipt.kind === 'daily';
+  const complete = event.receipt.kind === 'complete';
+  const dailyMet = event.receipt.kind === 'daily';
+  const count = complete ? 12 : dailyMet ? 9 : event.receipt.amount > 1 ? 7 : 4;
+  const duration = complete ? 760 : dailyMet ? 660 : 560;
+  const offset = Number(event.receipt.id.split('-').at(-1)) || 0;
   useEffect(() => {
-    const track = fill.current?.parentElement;
-    if (!origin.current || !fill.current || !track) return;
-    const trackWidth = track.getBoundingClientRect().width;
-    const start = trackWidth ? Math.max(0, Math.min(1, fill.current.getBoundingClientRect().width / trackWidth)) : fraction;
+    if (!origin.current) return;
     const animation = origin.current.animate([
-      { left: `${start * 100}%` }, { left: `${fraction * 100}%` },
-    ], { duration: 600, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'both' });
+      { left: String(event.start * 100) + '%' }, { left: String(event.end * 100) + '%' },
+    ], { duration: 480, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'both' });
     return () => animation.cancel();
-  }, [receipt.id, fraction, fill]);
+  }, [event]);
 
-  return <span className="task-progress-particles" data-kind={receipt.kind} aria-hidden="true">
-    <span ref={origin} className="progress-particle-origin" style={{ left: `${fraction * 100}%` }}>
-      <ParticleBurst count={complete ? 11 : dailyMet ? 16 : receipt.amount > 1 ? 11 : 7} spread={complete ? 1.05 : dailyMet ? 1 : .85} duration={complete ? 1050 : 900} celebrate={complete || dailyMet} />
-    </span>
-    {complete && [.28, .64].map((position, index) => <span key={position} className="progress-particle-origin" style={{ left: `${fraction * position * 100}%` }}>
-      <ParticleBurst count={8} spread={1} delay={80 + index * 80} duration={1050} celebrate />
-    </span>)}
+  return <span ref={origin} className="progress-particle-origin" data-burst-id={event.receipt.id} style={{ left: String(event.end * 100) + '%' }}>
+    {Array.from({ length: count }, (_, index) => {
+      const direction = particleDirections[(index + offset) % particleDirections.length];
+      return <i key={index} className={'progress-particle' + (index % 3 === 0 ? ' is-streak' : '')} style={{
+        '--particle-x': String(direction[0] * (complete ? 1.15 : 1)) + 'px',
+        '--particle-y': String(direction[1] * (complete ? 1.15 : 1)) + 'px',
+        '--particle-angle': String(Math.atan2(direction[1], direction[0]) * 180 / Math.PI) + 'deg',
+        '--particle-delay': String(index * 14) + 'ms',
+        '--particle-duration': String(duration) + 'ms',
+        '--particle-color': index % 3 === 0 ? 'var(--progress-pattern-color)' : 'var(--progress-ink)',
+      } as CSSProperties} />;
+    })}
+  </span>;
+}
+
+function ProgressParticles({ receipt, fraction, fill, reduced }: {
+  receipt?: ProgressFeedback; fraction: number; fill: RefObject<HTMLDivElement | null>; reduced: boolean;
+}) {
+  const [events, setEvents] = useState<ParticleEvent[]>([]);
+  const seen = useRef(receipt?.id);
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    if (reduced || (receipt && receipt.amount < 0)) {
+      for (const timer of timers.current.values()) clearTimeout(timer);
+      timers.current.clear();
+      setEvents(previous => previous.length ? [] : previous);
+      if (receipt) seen.current = receipt.id;
+      return;
+    }
+    if (!receipt || seen.current === receipt.id) return;
+    seen.current = receipt.id;
+    const track = fill.current?.parentElement;
+    const trackWidth = track?.getBoundingClientRect().width || 0;
+    const start = trackWidth && fill.current ? Math.max(0, Math.min(1, fill.current.getBoundingClientRect().width / trackWidth)) : fraction;
+    const event = { receipt, start, end: fraction };
+    // Keep earlier flights alive; only committed receipts emit new particles.
+    setEvents(previous => [...previous, event].slice(-4));
+    timers.current.set(receipt.id, setTimeout(() => {
+      setEvents(previous => previous.filter(item => item.receipt.id !== receipt.id));
+      timers.current.delete(receipt.id);
+    }, receipt.kind === 'complete' ? 1050 : 850));
+  }, [receipt?.id, receipt?.amount, receipt?.kind, fraction, fill, reduced]);
+  useEffect(() => () => {
+    for (const timer of timers.current.values()) clearTimeout(timer);
+    timers.current.clear();
+  }, []);
+
+  if (!events.length || reduced) return null;
+  return <span className="task-progress-particles" data-kind={events[events.length - 1].receipt.kind} aria-hidden="true">
+    {events.map(event => <ParticleTrail key={event.receipt.id} event={event} />)}
   </span>;
 }
 
@@ -84,15 +111,42 @@ function PatternTexture({ texture, receipt, reduced }: {
 }) {
   const patternId = useId();
   const pattern = useRef<SVGSVGElement>(null);
+  const animation = useRef<Animation | null>(null);
+  const seen = useRef(receipt?.id);
   useEffect(() => {
-    if (!receipt || reduced || !pattern.current) return;
-    const offset = receipt.amount < 0 ? 28 : -28;
-    const animation = pattern.current.animate([
-      { transform: `translateX(${offset}px)` },
-      { transform: 'translateX(0)' },
-    ], { duration: receipt.kind === 'complete' ? 900 : 650, easing: 'cubic-bezier(.16,1,.3,1)' });
-    return () => animation.cancel();
+    const element = pattern.current;
+    if (!element) return;
+    if (reduced) {
+      const transform = getComputedStyle(element).transform;
+      const phase = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41 % 28;
+      element.style.transform = 'translateX(' + phase + 'px)';
+      animation.current?.cancel();
+      animation.current = null;
+      seen.current = receipt?.id;
+      return;
+    }
+    if (!receipt || seen.current === receipt.id) return;
+    seen.current = receipt.id;
+    const transform = getComputedStyle(element).transform;
+    const phase = transform === 'none' ? 0 : new DOMMatrixReadOnly(transform).m41 % 28;
+    element.style.transform = 'translateX(' + phase + 'px)';
+    animation.current?.cancel();
+    const target = phase + (receipt.amount < 0 ? -28 : 28);
+    const next = element.animate([
+      { transform: 'translateX(' + phase + 'px)' }, { transform: 'translateX(' + target + 'px)' },
+    ], { duration: receipt.kind === 'complete' ? 650 : 480, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' });
+    animation.current = next;
+    next.onfinish = () => {
+      if (animation.current !== next) return;
+      element.style.transform = 'translateX(' + target % 28 + 'px)';
+      next.cancel();
+      animation.current = null;
+    };
   }, [receipt?.id, receipt?.amount, receipt?.kind, reduced]);
+  useEffect(() => () => {
+    animation.current?.cancel();
+    animation.current = null;
+  }, []);
 
   return <svg ref={pattern} className="task-progress-texture" aria-hidden="true" focusable="false">
     <defs>
@@ -122,7 +176,7 @@ export function TaskProgress({ label, ariaLabel, value, maximum, displayValue = 
   useEffect(() => { previousNumber.current = displayValue; }, [displayValue]);
   const fraction = maximum > 0 ? Math.max(0, Math.min(1, value / maximum)) : 0;
   const kind = pending ? 'pending' : failed ? 'failed' : effect?.kind || 'idle';
-  const confirmedMet = met && !pending && !failed;
+  const confirmedMet = met;
   const markMinimum = minimum > 0 && minimum < maximum;
   const counter = `${displayValue} / ${maximum} ${unit}`;
   const digits = String(displayValue).length;
@@ -144,13 +198,13 @@ export function TaskProgress({ label, ariaLabel, value, maximum, displayValue = 
       <div className="task-progress-rail" role="progressbar" aria-label={ariaLabel} aria-valuemin={0} aria-valuemax={maximum} aria-valuenow={value} aria-valuetext={`${daily ? '今日 ' : ''}${counter}`}>
         <div className="task-progress-track">
           <div ref={fill} className="task-progress-fill" style={{ width: `${fraction * 100}%` }}>
-            <PatternTexture texture={texture} receipt={receipt} reduced={reduced} />
+            <PatternTexture texture={texture} receipt={effect} reduced={reduced} />
           </div>
           {receipt && (receipt.kind === 'daily' || receipt.kind === 'complete') && <span key={`sweep-${receipt.id}`} className="task-progress-sweep" aria-hidden="true" />}
         </div>
         {markMinimum && <span className="task-progress-minimum" style={{ left: `${minimum / maximum * 100}%` }} title={`最小完成量 ${minimum} ${unit}`}><span className="sr-only">最小完成量 {minimum} {unit}</span></span>}
         {receipt?.kind === 'complete' && <span key={`finish-${receipt.id}`} className="task-progress-finish" aria-hidden="true" />}
-        {receipt && receipt.amount > 0 && !reduced && <ProgressParticles key={receipt.id} receipt={receipt} fraction={fraction} fill={fill} />}
+        <ProgressParticles receipt={effect} fraction={fraction} fill={fill} reduced={reduced} />
       </div>
     </div>
   </div>;

@@ -70,6 +70,50 @@ test('patterned progress stays proportional across screens and pointer actions n
   expect((await persistedState(page)).tasks[0].record_count).toBe(1);
 });
 
+test('a second pending step preserves the running texture and particles', async ({ page }) => {
+  const task = await seed(page);
+  const card = taskCard(page, task.name), meter = card.locator('.task-progress');
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let calls = 0;
+  await page.route('**/api/tasks/*/records', async route => {
+    if (++calls === 2) { await held; await route.fulfill({ status: 503, json: { detail: '测试保存失败' } }); }
+    else await route.continue();
+  });
+  await step(page, task, 1);
+  const particleLayer = await meter.locator('.task-progress-particles').elementHandle();
+  const texturePhase = await meter.locator('.task-progress-texture').evaluate(el => {
+    for (const animation of el.getAnimations()) { animation.pause(); animation.currentTime = 200; }
+    return new DOMMatrixReadOnly(getComputedStyle(el).transform).m41;
+  });
+  await card.getByRole('button', { name: `${task.name}增加1页`, exact: true }).click();
+  try {
+    await expect(meter).toHaveAttribute('data-feedback', 'pending');
+    expect(await particleLayer!.evaluate(el => el.isConnected)).toBe(true);
+    const phase = await meter.locator('.task-progress-texture').evaluate(el => new DOMMatrixReadOnly(getComputedStyle(el).transform).m41);
+    expect(Math.abs((phase - texturePhase + 42) % 28 - 14)).toBeLessThan(.5);
+  } finally { release(); }
+  await expect(meter).toHaveAttribute('data-feedback', 'failed');
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+  await expect(meter.locator('.task-progress-particles')).toHaveCount(0);
+  expect((await persistedState(page)).tasks[0].record_count).toBe(1);
+});
+
+test('successive confirmed steps add a new trail without restarting the previous flight', async ({ page }) => {
+  const task = await seed(page);
+  const card = taskCard(page, task.name);
+  await step(page, task, 1);
+  const first = await card.locator('[data-burst-id]').first().elementHandle();
+  const before = await first!.evaluate(el => el.querySelector('.progress-particle')!.getAnimations()[0].currentTime as number);
+  await step(page, task, 1);
+  await expect(card.locator('[data-burst-id]')).toHaveCount(2);
+  expect(await first!.evaluate(el => el.isConnected)).toBe(true);
+  const after = await first!.evaluate(el => el.querySelector('.progress-particle')!.getAnimations()[0].currentTime as number);
+  expect(after).toBeGreaterThanOrEqual(before);
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '2');
+  expect((await persistedState(page)).tasks[0].record_count).toBe(2);
+});
+
 test('pending completion never celebrates; failure rolls back and confirmed completion offers animated feedback and undo', async ({ page }, testInfo) => {
   const task = await seed(page, { target: 5 });
   const card = taskCard(page, task.name), meter = card.locator('.task-progress');
