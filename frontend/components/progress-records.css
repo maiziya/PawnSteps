@@ -21,6 +21,17 @@
 .record-history-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
 .record-history-heading h3 { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
 .record-history-heading>span { color: var(--muted); font-size: 12px; }
+.record-day { border-top: 1px solid var(--border); }
+.record-day-summary { display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 16px; min-height: 64px; }
+.record-day-date { min-width: 0; overflow-wrap: anywhere; font-size: 14px; font-variant-numeric: tabular-nums; }
+.record-day-summary>strong { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.record-day-summary>strong>span { color: var(--muted); font-size: 13px; font-weight: 400; }
+.record-day-toggle { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 12px; }
+.record-day-toggle:hover { background: var(--surface-soft); color: var(--text); }
+.record-day-toggle svg { transition: transform 160ms; }
+.record-day-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.record-day-details { padding: 0 12px 8px; margin-bottom: 12px; border-radius: 10px; background: var(--surface-soft); }
+.record-day-details .record-entry:first-child { border-top: 0; }
 .record-entry { border-top: 1px solid var(--border); padding: 13px 0 5px; min-width: 0; }
 .record-entry-heading { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .record-entry-heading strong { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; min-width: 0; }
@@ -42,6 +53,10 @@
   .progress-records-dialog .dialog-header h2 { font-size: 19px; }
   .record-totals { gap: 12px; }
   .record-totals strong { font-size: 18px; }
+  .record-day-summary { gap: 8px; }
+  .record-day-summary>strong { font-size: 16px; }
+  .record-day-date { font-size: 12px; }
+  .record-day-toggle { font-size: 11px; padding: 0 3px; }
   .record-amount-row { gap: 8px; }
   .record-amount-row>.btn { padding: 10px 12px; }
   .record-input-unit { gap: 6px; }

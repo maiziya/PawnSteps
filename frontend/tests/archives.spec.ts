@@ -28,6 +28,7 @@ test('archive removes a selected task, preserves calendar and records, and resto
   await row.getByRole('button', { name: `${task.name}查看记录`, exact: true }).click();
   const dialog = page.getByRole('dialog', { name: `记录进度 · ${task.name}`, exact: true });
   await expect(dialog).toContainText('任务已归档，记录只读');
+  await dialog.getByRole('button', { name: '查看明细', exact: true }).click();
   await expect(dialog.locator('.record-entry')).toHaveCount(1);
   await expect(dialog.getByRole('button', { name: /编辑记录|撤销记录|保存记录/ })).toHaveCount(0);
   await page.keyboard.press('Escape');

@@ -56,6 +56,10 @@ export async function recordProgress(page: Page, name: string, amount: number, n
   const saved = await response;
   expect(saved.status()).toBe(201);
   const payload: MutationResponse = await saved.json();
+  const day = dialog.getByRole('region', { name: `每日记录 ${payload.record!.date}`, exact: true });
+  await expect(day).toBeVisible();
+  const toggle = day.getByRole('button', { name: '查看明细', exact: true });
+  if (await toggle.count()) await toggle.click();
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('article', { name: `进度记录 ${payload.record!.id}`, exact: true }).getByRole('button', { name: '编辑记录', exact: true })).toBeEnabled();
   return dialog;

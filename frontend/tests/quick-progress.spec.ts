@@ -45,6 +45,8 @@ test('card increments save separate records without opening a dialog and survive
   expect(task.today_amount).toBe(7);
   expect(task.record_count).toBe(3);
   const history = await openRecords(page, name);
+  await expect(history.locator('.record-day')).toHaveCount(1);
+  await history.getByRole('button', { name: '查看明细', exact: true }).click();
   await expect(history.getByRole('article')).toHaveCount(3);
   for (const record of records) await expect(history.getByRole('article', { name: `进度记录 ${record.id}`, exact: true })).toBeVisible();
 });
@@ -217,6 +219,7 @@ test('minus one corrects the latest quantity, reopens a daily check-in, and stop
   await expect(page.getByRole('button', { name: '撤销', exact: true })).toHaveCount(0);
   await expect(page.locator('[data-sonner-toast]')).toHaveCount(0);
   const history = await openRecords(page, name);
+  await history.getByRole('button', { name: '查看明细', exact: true }).click();
   await expect(history.getByRole('article', { name: `进度记录 ${first.id}`, exact: true })).toContainText('1 页');
   await expect(history.getByRole('article', { name: `进度记录 ${latest.id}`, exact: true })).toContainText('4 页');
   await page.keyboard.press('Escape');
@@ -273,6 +276,7 @@ test('completion undo from the reward dialog revokes only the finishing record a
   await expect(card.getByRole('progressbar', { name: `${name}总进度`, exact: true })).toHaveAttribute('aria-valuenow', '1');
   await expect(card.getByRole('button', { name: `${name}查看记录`, exact: true })).toBeFocused();
   const history = await openRecords(page, name);
+  await history.getByRole('button', { name: '查看明细', exact: true }).click();
   await expect(history.getByRole('article')).toHaveCount(1);
   await expect(history.getByRole('article', { name: `进度记录 ${first.id}`, exact: true })).toBeVisible();
   await page.keyboard.press('Escape');

@@ -24,6 +24,7 @@ test('weekly review preserves quantities, drills into days and responds to recor
   await expect(panel.getByRole('button', { name: '查看整周', exact: true })).toBeVisible();
   await panel.getByRole('button', { name: `查看${task.name}的记录`, exact: true }).click();
   const dialog = page.getByRole('dialog', { name: `记录进度 · ${task.name}` });
+  await dialog.getByRole('button', { name: '查看明细', exact: true }).click();
   await dialog.getByRole('button', { name: '撤销记录', exact: true }).click();
   await expect(dialog.getByRole('article')).toHaveCount(0);
   await page.keyboard.press('Escape');

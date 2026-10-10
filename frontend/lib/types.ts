@@ -17,6 +17,8 @@ export interface ProgressRecord {
   created_at: string; updated_at: string; deleted_at: string | null;
 }
 export interface ProgressRecordsResponse { records: ProgressRecord[]; total: number; offset: number; limit: number }
+export interface ProgressRecordDay { date: string | null; amount: number; record_count: number }
+export interface ProgressRecordDaysResponse { days: ProgressRecordDay[]; total: number; offset: number; limit: number }
 export interface Reward {
   id: string; name: string; image_url: string | null; is_unlocked: boolean;
   position: number; streak_target: number | null; owner_id: string;
@@ -37,6 +39,8 @@ export interface MutationResponse {
   image_url?: string | null; authorization_url?: string | null;
   message?: string | null; retry_after?: number | null;
   record?: ProgressRecord | null;
+  record_day?: ProgressRecordDay | null;
+  record_day_count?: number | null;
   today_plan: TodayPlan;
   focus?: import("./focus-types").FocusState | null;
 }

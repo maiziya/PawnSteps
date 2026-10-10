@@ -168,6 +168,19 @@ class ProgressRecordList(BaseModel):
     limit: int
 
 
+class ProgressRecordDay(BaseModel):
+    date: date | None
+    amount: int
+    record_count: int
+
+
+class ProgressRecordDays(BaseModel):
+    days: list[ProgressRecordDay]
+    total: int
+    offset: int
+    limit: int
+
+
 class CourseUpdate(BaseModel):
     indices: list[int] = Field(min_length=1, max_length=10000)
     done: bool
@@ -324,6 +337,8 @@ class MutationResponse(BaseModel):
     unlocked_reward: RewardOut | None = None
     undo_token: str | None = None
     record: ProgressRecordOut | None = None
+    record_day: ProgressRecordDay | None = None
+    record_day_count: int | None = None
     focus: FocusState | None = None
 
 

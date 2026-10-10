@@ -1,14 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { History, LoaderCircle, Pencil, RotateCcw } from 'lucide-react';
+import { ChevronDown, History, LoaderCircle, Pencil, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
 import { useAppStore } from '@/lib/store';
-import type { MutationResponse, ProgressRecord, ProgressRecordsResponse } from '@/lib/types';
+import type { MutationResponse, ProgressRecord, ProgressRecordDay, ProgressRecordDaysResponse, ProgressRecordsResponse } from '@/lib/types';
 import './progress-records.css';
 
 const PAGE_SIZE = 50;
@@ -22,12 +22,23 @@ function sortRecords(records: ProgressRecord[]): ProgressRecord[] {
   return records.sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
 }
 
+function dayKey(day: string | null): string { return day ?? 'undated'; }
+
+function sortDays(days: ProgressRecordDay[]): ProgressRecordDay[] {
+  return days.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
 export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: string | null; onClose: () => void; returnFocus?: () => HTMLElement | null }) {
   const task = useAppStore(state => [...state.tasks, ...state.archivedTasks].find(item => item.id === taskId));
   const mutate = useAppStore(state => state.mutate);
   const busy = useAppStore(state => state.busy);
   const timezone = useAppStore(state => state.timezone);
   const [records, setRecords] = useState<ProgressRecord[]>([]);
+  const [days, setDays] = useState<ProgressRecordDay[]>([]);
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  const [detailTotal, setDetailTotal] = useState(0);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
@@ -42,11 +53,20 @@ export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: stri
   const activeTaskId = useRef(taskId);
   const previousTaskId = useRef(taskId);
   const pendingAttempt = useRef<{ payload: string; id: string } | null>(null);
+  const detailRequest = useRef<AbortController | null>(null);
+  const activeDay = useRef(expandedDay);
+  activeDay.current = expandedDay;
   activeTaskId.current = taskId;
   if (taskId) previousTaskId.current = taskId;
 
   useEffect(() => {
     setRecords([]);
+    setDays([]);
+    setExpandedDay(null);
+    setDetailTotal(0);
+    setDetailLoading(false);
+    setDetailError('');
+    detailRequest.current?.abort();
     setTotal(0);
     setAmount('1');
     setNote('');
@@ -57,11 +77,11 @@ export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: stri
     if (!taskId) { setLoading(false); return; }
     const controller = new AbortController();
     setLoading(true);
-    api<ProgressRecordsResponse>(`/tasks/${taskId}/records?offset=0&limit=${PAGE_SIZE}`, { signal: controller.signal })
-      .then(data => { if (!controller.signal.aborted) { setRecords(data.records); setTotal(data.total); } })
+    api<ProgressRecordDaysResponse>(`/tasks/${taskId}/record-days?offset=0&limit=${PAGE_SIZE}`, { signal: controller.signal })
+      .then(data => { if (!controller.signal.aborted) { setDays(data.days); setTotal(data.total); } })
       .catch(error => { if (!controller.signal.aborted) setLoadError(error instanceof Error ? error.message : '记录读取失败'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
+    return () => { controller.abort(); detailRequest.current?.abort(); };
   }, [taskId]);
 
   async function loadMore() {
@@ -70,21 +90,60 @@ export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: stri
     setLoading(true);
     setLoadError('');
     try {
-      const data = await api<ProgressRecordsResponse>(`/tasks/${requestedId}/records?offset=${records.length}&limit=${PAGE_SIZE}`);
+      const data = await api<ProgressRecordDaysResponse>(`/tasks/${requestedId}/record-days?offset=${days.length}&limit=${PAGE_SIZE}`);
       if (activeTaskId.current !== requestedId) return;
-      setRecords(previous => sortRecords([...new Map([...previous, ...data.records].map(record => [record.id, record])).values()]));
+      setDays(previous => sortDays([...new Map([...previous, ...data.days].map(day => [dayKey(day.date), day])).values()]));
       setTotal(data.total);
     } catch (error) {
       if (activeTaskId.current === requestedId) setLoadError(error instanceof Error ? error.message : '记录读取失败');
     } finally { if (activeTaskId.current === requestedId) setLoading(false); }
   }
 
+  async function loadDetails(day: ProgressRecordDay, append = false) {
+    if (!taskId) return;
+    const requestedId = taskId;
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
+    setDetailLoading(true);
+    setDetailError('');
+    const filter = day.date === null ? 'undated=true' : `day=${day.date}`;
+    try {
+      const data = await api<ProgressRecordsResponse>(`/tasks/${requestedId}/records?${filter}&offset=${append ? records.length : 0}&limit=${PAGE_SIZE}`, { signal: controller.signal });
+      if (controller.signal.aborted || activeTaskId.current !== requestedId) return;
+      setRecords(previous => sortRecords([...new Map([...(append ? previous : []), ...data.records].map(record => [record.id, record])).values()]));
+      setDetailTotal(data.total);
+    } catch (error) {
+      if (!controller.signal.aborted && activeTaskId.current === requestedId) setDetailError(error instanceof Error ? error.message : '明细读取失败');
+    } finally {
+      if (!controller.signal.aborted && activeTaskId.current === requestedId) setDetailLoading(false);
+    }
+  }
+
+  function toggleDay(day: ProgressRecordDay) {
+    const key = dayKey(day.date);
+    detailRequest.current?.abort();
+    setEditingId(null);
+    setRecords([]);
+    setDetailError('');
+    setDetailLoading(false);
+    if (expandedDay === key) { setExpandedDay(null); return; }
+    setExpandedDay(key);
+    setDetailTotal(day.record_count);
+    void loadDetails(day);
+  }
+
   function applyRecord(response: MutationResponse) {
     const record = response.record;
-    if (!record || activeTaskId.current !== record.task_id) return;
-    setRecords(previous => sortRecords([...previous.filter(item => item.id !== record.id), ...(record.deleted_at ? [] : [record])]));
-    const currentTask = response.tasks.find(item => item.id === record.task_id);
-    if (currentTask) setTotal(currentTask.record_count);
+    const day = response.record_day;
+    if (!record || !day || activeTaskId.current !== record.task_id) return;
+    setDays(previous => sortDays([...previous.filter(item => item.date !== day.date), ...(day.record_count ? [day] : [])]));
+    if (response.record_day_count !== null && response.record_day_count !== undefined) setTotal(response.record_day_count);
+    if (activeDay.current === dayKey(day.date)) {
+      setRecords(previous => sortRecords([...previous.filter(item => item.id !== record.id), ...(record.deleted_at ? [] : [record])]));
+      setDetailTotal(day.record_count);
+      if (!day.record_count) setExpandedDay(null);
+    }
   }
 
   async function addRecord(event: FormEvent<HTMLFormElement>) {
@@ -137,7 +196,7 @@ export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: stri
   const isPlan = task?.daily_plan !== null && task?.daily_plan !== undefined;
   const isDaily = Boolean(task && (task.daily_quota > 0 || isPlan));
   const canRecord = Boolean(task && !task.archived_at && !task.plan_expired && !(isPlan && task.daily_quota === 0) && (!task.is_done || (isDaily && task.daily_done)));
-  const pending = busy || submitting || loading;
+  const pending = busy || submitting || loading || detailLoading;
   const unit = task?.unit || '步';
   const status = task?.archived_at ? '任务已归档，记录只读；恢复任务后可以继续记录和调整。' : task?.plan_expired ? '计划已结束，可查看和调整已有记录。'
     : isPlan && task?.daily_quota === 0 ? (task?.daily_done ? '今天是休息日，无需记录。' : `计划从 ${task?.plan_start_date} 开始。`)
@@ -174,18 +233,35 @@ export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: stri
             {formError && <p role="alert" className="record-error">{formError}</p>}
           </form>}
           <section className="record-history" aria-label="进度记录">
-            <div className="record-history-heading"><h3><History size={17} />记录历史</h3><span>{total} 条记录</span></div>
-            {records.length === 0 && !loading && !loadError && <p className="record-empty">还没有记录，完成后在这里留下一笔。</p>}
-            <div className="record-list">{records.map(record => <article className="record-entry" key={record.id} aria-label={`进度记录 ${record.id}`}>
-              <div className="record-entry-heading"><strong>{record.amount} <span>{unit}</span></strong><span className="record-date">{record.date === null ? '旧版累计 · 日期未知' : `${record.source === 'legacy' ? '旧版记录 · ' : ''}${record.date}${record.source === 'manual' ? ` ${new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at))}` : ''}`}</span></div>
-              {editingId === record.id && !task.archived_at ? <form className="record-edit-form" onSubmit={saveEdit}><label htmlFor={`edit-amount-${record.id}`}>修改完成量<Input id={`edit-amount-${record.id}`} type="number" min={1} max={MAX_AMOUNT} step={1} value={editAmount} disabled={pending} onChange={event => setEditAmount(event.target.value)} /></label><label htmlFor={`edit-note-${record.id}`}>修改备注<Input id={`edit-note-${record.id}`} value={editNote} maxLength={200} disabled={pending} onChange={event => setEditNote(event.target.value)} /></label>{editError && <p role="alert" className="record-error">{editError}</p>}<div className="record-edit-actions"><Button type="button" variant="ghost" disabled={pending} onClick={() => setEditingId(null)}>取消编辑</Button><Button type="submit" disabled={pending}>保存修改</Button></div></form> : <>
-                {record.note && <p className="record-note">{record.note}</p>}
-                {!task.archived_at && <div className="record-entry-actions"><button type="button" disabled={pending} onClick={() => { setEditingId(record.id); setEditAmount(String(record.amount)); setEditNote(record.note); setEditError(''); }}><Pencil size={14} />编辑记录</button><button type="button" disabled={pending} onClick={() => void revoke(record)}><RotateCcw size={14} />撤销记录</button></div>}
-              </>}
-            </article>)}</div>
+            <div className="record-history-heading"><h3><History size={17} />记录历史</h3><span>{total} {days.some(day => day.date === null) ? '组记录' : '天记录'}</span></div>
+            {days.length === 0 && !loading && !loadError && <p className="record-empty">还没有记录，完成后在这里留下一笔。</p>}
+            <div className="record-list">{days.map(day => {
+              const key = dayKey(day.date);
+              const expanded = expandedDay === key;
+              const label = day.date === null ? '旧版累计 · 日期未知' : day.date;
+              return <section className="record-day" key={key} aria-label={`每日记录 ${label}`}>
+                <div className="record-day-summary">
+                  <span className="record-day-date">{label}</span>
+                  <strong>{day.amount} <span>{unit}</span></strong>
+                  <button type="button" className="record-day-toggle" aria-expanded={expanded} aria-controls={`record-details-${key}`} disabled={busy || submitting || loading} onClick={() => toggleDay(day)}>{expanded ? '收起明细' : '查看明细'}<ChevronDown size={14} /></button>
+                </div>
+                {expanded && <div className="record-day-details" id={`record-details-${key}`}>
+                  {records.map(record => <article className="record-entry" key={record.id} aria-label={`进度记录 ${record.id}`}>
+                    <div className="record-entry-heading"><strong>{record.amount} <span>{unit}</span></strong><span className="record-date">{record.date === null ? '日期未知' : record.source === 'legacy' ? '旧版记录' : new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at))}</span></div>
+                    {editingId === record.id && !task.archived_at ? <form className="record-edit-form" onSubmit={saveEdit}><label htmlFor={`edit-amount-${record.id}`}>修改完成量<Input id={`edit-amount-${record.id}`} type="number" min={1} max={MAX_AMOUNT} step={1} value={editAmount} disabled={pending} onChange={event => setEditAmount(event.target.value)} /></label><label htmlFor={`edit-note-${record.id}`}>修改备注<Input id={`edit-note-${record.id}`} value={editNote} maxLength={200} disabled={pending} onChange={event => setEditNote(event.target.value)} /></label>{editError && <p role="alert" className="record-error">{editError}</p>}<div className="record-edit-actions"><Button type="button" variant="ghost" disabled={pending} onClick={() => setEditingId(null)}>取消编辑</Button><Button type="submit" disabled={pending}>保存修改</Button></div></form> : <>
+                      {record.note && <p className="record-note">{record.note}</p>}
+                      {!task.archived_at && <div className="record-entry-actions"><button type="button" disabled={pending} onClick={() => { setEditingId(record.id); setEditAmount(String(record.amount)); setEditNote(record.note); setEditError(''); }}><Pencil size={14} />编辑记录</button><button type="button" disabled={pending} onClick={() => void revoke(record)}><RotateCcw size={14} />撤销记录</button></div>}
+                    </>}
+                  </article>)}
+                  {detailLoading && <p className="record-loading" role="status"><LoaderCircle size={16} className="animate-spin" />正在读取明细</p>}
+                  {detailError && <div className="record-load-error"><p role="alert">{detailError}</p><Button type="button" variant="outline" disabled={pending} onClick={() => void loadDetails(day)}>重新加载明细</Button></div>}
+                  {!detailLoading && !detailError && records.length < detailTotal && <Button className="record-load-more" type="button" variant="outline" disabled={pending} onClick={() => void loadDetails(day, true)}>加载更多明细</Button>}
+                </div>}
+              </section>;
+            })}</div>
             {loading && <p className="record-loading" role="status"><LoaderCircle size={16} className="animate-spin" />正在读取记录</p>}
             {loadError && <div className="record-load-error"><p role="alert">{loadError}</p><Button variant="outline" onClick={() => void loadMore()} disabled={pending}>重新加载</Button></div>}
-            {!loading && !loadError && records.length < total && <Button className="record-load-more" type="button" variant="outline" disabled={pending} onClick={() => void loadMore()}>加载更多记录</Button>}
+            {!loading && !loadError && days.length < total && <Button className="record-load-more" type="button" variant="outline" disabled={pending} onClick={() => void loadMore()}>加载更早记录</Button>}
           </section>
         </>}
       </div>

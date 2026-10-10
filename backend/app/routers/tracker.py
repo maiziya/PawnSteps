@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_owner_id
 from app.database import get_session
-from app.schemas import CourseUpdate, DayPlanUpdate, HistoryResponse, MutationResponse, ProgressDecrement, ProgressRecordCreate, ProgressRecordList, ProgressRecordPatch, Reorder, RewardCreate, RewardPatch, TaskCreate, TaskPatch, UndoRequest
+from app.schemas import CourseUpdate, DayPlanUpdate, HistoryResponse, MutationResponse, ProgressDecrement, ProgressRecordCreate, ProgressRecordDays, ProgressRecordList, ProgressRecordPatch, Reorder, RewardCreate, RewardPatch, TaskCreate, TaskPatch, UndoRequest
 from app.services import tracker
 
 
@@ -85,9 +85,17 @@ async def retired_progress(task_id: UUID, session: Session, owner_id: OwnerId):
 
 @router.get('/tasks/{task_id}/records', response_model=ProgressRecordList)
 async def records(task_id: UUID, session: Session, owner_id: OwnerId,
-                  offset: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=100)):
+                  offset: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=100),
+                  day: date | None = Query(default=None), undated: bool = Query(default=False)):
     async with tracker.owner_transaction(session, owner_id):
-        return await tracker.list_records(session, owner_id, task_id, offset, limit)
+        return await tracker.list_records(session, owner_id, task_id, offset, limit, day, undated)
+
+
+@router.get('/tasks/{task_id}/record-days', response_model=ProgressRecordDays)
+async def record_days(task_id: UUID, session: Session, owner_id: OwnerId,
+                      offset: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=100)):
+    async with tracker.owner_transaction(session, owner_id):
+        return await tracker.list_record_days(session, owner_id, task_id, offset, limit)
 
 
 @router.post('/tasks/{task_id}/records', response_model=MutationResponse, status_code=201)

@@ -403,10 +403,42 @@ async def _get_progress_record(session: AsyncSession, task_id: UUID, record_id: 
     return record
 
 
-async def list_records(session: AsyncSession, owner_id: str, task_id: UUID, offset: int, limit: int) -> dict:
+def _record_days_query(task_id: UUID):
+    return select(ProgressRecord.date, func.sum(ProgressRecord.amount).label('amount'),
+        func.count().label('record_count')).where(
+        ProgressRecord.task_id == task_id, ProgressRecord.deleted_at.is_(None)).group_by(ProgressRecord.date)
+
+
+async def list_record_days(session: AsyncSession, owner_id: str, task_id: UUID, offset: int, limit: int) -> dict:
+    await snapshot(session, owner_id)
+    task = await get_task(session, owner_id, task_id)
+    query = _record_days_query(task.id)
+    total = await session.scalar(select(func.count()).select_from(query.subquery()))
+    rows = (await session.execute(query.order_by(ProgressRecord.date.desc().nullslast())
+        .offset(offset).limit(limit))).mappings().all()
+    return {'days': [dict(row) for row in rows], 'total': total, 'offset': offset, 'limit': limit}
+
+
+async def _record_result(session: AsyncSession, owner_id: str, record: ProgressRecord) -> dict:
+    state = await snapshot(session, owner_id)
+    query = _record_days_query(record.task_id)
+    total = await session.scalar(select(func.count()).select_from(query.subquery()))
+    day_query = query.where(ProgressRecord.date == record.date) if record.date is not None else query.where(ProgressRecord.date.is_(None))
+    row = (await session.execute(day_query)).mappings().first()
+    return {**state, 'record': ProgressRecordOut.model_validate(record),
+        'record_day': dict(row) if row else {'date': record.date, 'amount': 0, 'record_count': 0},
+        'record_day_count': total}
+
+
+async def list_records(session: AsyncSession, owner_id: str, task_id: UUID, offset: int, limit: int,
+                       day: date | None = None, undated: bool = False) -> dict:
     await snapshot(session, owner_id)
     task = await get_task(session, owner_id, task_id)
     predicate = (ProgressRecord.task_id == task.id, ProgressRecord.deleted_at.is_(None))
+    if day is not None:
+        predicate += (ProgressRecord.date == day,)
+    elif undated:
+        predicate += (ProgressRecord.date.is_(None),)
     total = await session.scalar(select(func.count()).select_from(ProgressRecord).where(*predicate))
     records = (await session.scalars(select(ProgressRecord).where(*predicate)
         .order_by(ProgressRecord.date.desc().nullslast(), ProgressRecord.created_at.desc(), ProgressRecord.id.desc())
@@ -427,7 +459,7 @@ async def create_record(session: AsyncSession, owner_id: str, task_id: UUID, bod
         if existing is not None:
             if existing.request_fingerprint != fingerprint:
                 raise HTTPException(409, 'This request ID was already used for a different record')
-            return {**await snapshot(session, owner_id), 'record': ProgressRecordOut.model_validate(existing)}
+            return await _record_result(session, owner_id, existing)
     require_active(task)
     if task.course_items is not None:
         raise HTTPException(422, 'Course progress is recorded through its checklist')
@@ -444,7 +476,7 @@ async def create_record(session: AsyncSession, owner_id: str, task_id: UUID, bod
     session.add(record)
     task.updated_at = utcnow()
     await session.flush()
-    return {**await snapshot(session, owner_id), 'record': ProgressRecordOut.model_validate(record)}
+    return await _record_result(session, owner_id, record)
 
 
 async def decrement_progress(session: AsyncSession, owner_id: str, task_id: UUID, request_id: UUID) -> dict:
@@ -456,7 +488,7 @@ async def decrement_progress(session: AsyncSession, owner_id: str, task_id: UUID
     receipt = await session.get(ProgressAdjustment, (task.id, request_id))
     if receipt is not None:
         record = await _get_progress_record(session, task.id, receipt.record_id)
-        return {**await snapshot(session, owner_id), 'record': ProgressRecordOut.model_validate(record)}
+        return await _record_result(session, owner_id, record)
 
     require_active(task)
     if task.course_items is not None:
@@ -485,7 +517,7 @@ async def decrement_progress(session: AsyncSession, owner_id: str, task_id: UUID
     task.updated_at = now
     session.add(ProgressAdjustment(task_id=task.id, request_id=request_id, record_id=record.id, created_at=now))
     await session.flush()
-    return {**await snapshot(session, owner_id), 'record': ProgressRecordOut.model_validate(record)}
+    return await _record_result(session, owner_id, record)
 
 
 async def update_record(session: AsyncSession, owner_id: str, task_id: UUID, record_id: UUID,
@@ -501,7 +533,7 @@ async def update_record(session: AsyncSession, owner_id: str, task_id: UUID, rec
     record.updated_at = utcnow()
     task.updated_at = utcnow()
     await session.flush()
-    return {**await snapshot(session, owner_id), 'record': ProgressRecordOut.model_validate(record)}
+    return await _record_result(session, owner_id, record)
 
 
 async def revoke_record(session: AsyncSession, owner_id: str, task_id: UUID, record_id: UUID) -> dict:
@@ -514,7 +546,7 @@ async def revoke_record(session: AsyncSession, owner_id: str, task_id: UUID, rec
         record.updated_at = record.deleted_at
         task.updated_at = record.deleted_at
         await session.flush()
-    return {**await snapshot(session, owner_id), 'record': ProgressRecordOut.model_validate(record)}
+    return await _record_result(session, owner_id, record)
 
 
 async def set_course(session: AsyncSession, owner_id: str, task_id: UUID, body: CourseUpdate) -> dict:

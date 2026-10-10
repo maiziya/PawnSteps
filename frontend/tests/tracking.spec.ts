@@ -196,6 +196,7 @@ test('read-only progress cannot change totals while records remain editable afte
   await page.reload();
   await expect(taskCard(page, name).getByRole('progressbar', { name: `${name}总进度`, exact: true })).toHaveAttribute('aria-valuenow', '1');
   const reopened = await openRecords(page, name);
+  await reopened.getByRole('button', { name: '查看明细', exact: true }).click();
   await expect(reopened.getByRole('article')).toHaveCount(1);
   await expect(reopened).toContainText('修正后的阅读量');
 });
