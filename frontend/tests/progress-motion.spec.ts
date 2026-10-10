@@ -32,13 +32,13 @@ test('confirmed steps animate new work; decrement has distinct feedback and relo
     const track = (await meter.locator('.task-progress-track').boundingBox())!;
     return fill.width / track.width;
   }).toBeCloseTo(.25, 2);
-  await expect(meter.locator('[data-change="increase"]')).toHaveCount(1);
+  await expect(meter.locator('.task-progress-change')).toHaveCount(0);
   expect(await meter.locator('.task-progress-fill').evaluate(el => getComputedStyle(el).transitionDuration)).toContain('0.6s');
   await page.screenshot({ path: testInfo.outputPath('step-confirmed.png') });
   await step(page, task, -1);
   await expect(meter).toHaveAttribute('data-feedback', 'decrement');
   await expect(meter.getByRole('status')).toHaveText('−1 页');
-  await expect(meter.locator('.task-progress-change.is-decrement')).toHaveCount(1);
+  await expect(meter.locator('.task-progress-fill')).toHaveAttribute('style', 'width: 20%;');
   expect((await persistedState(page)).tasks[0].progress).toBe(4);
   await page.reload();
   await expect(meter).toHaveAttribute('data-feedback', 'idle');

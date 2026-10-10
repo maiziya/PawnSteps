@@ -68,8 +68,6 @@ export function TaskProgress({ label, ariaLabel, value, maximum, displayValue = 
   const direction = displayValue < previousNumber.current || displayValue === previousNumber.current && (effect?.amount ?? 0) < 0 ? -1 : 1;
   useEffect(() => { previousNumber.current = displayValue; }, [displayValue]);
   const fraction = maximum > 0 ? Math.max(0, Math.min(1, value / maximum)) : 0;
-  const previous = effect ? daily ? effect.fromToday : effect.fromProgress : value;
-  const previousFraction = maximum > 0 ? Math.max(0, Math.min(1, previous / maximum)) : 0;
   const kind = pending ? 'pending' : failed ? 'failed' : effect?.kind || 'idle';
   const confirmedMet = met && !pending && !failed;
   const markMinimum = minimum > 0 && minimum < maximum;
@@ -77,8 +75,6 @@ export function TaskProgress({ label, ariaLabel, value, maximum, displayValue = 
   const digits = String(displayValue).length;
   const numberSize = digits > 5 ? Math.max(12, 18 - (digits - 5)) : undefined;
   const receipt = !pending && !failed ? effect : undefined;
-  const changeStart = Math.min(fraction, previousFraction) * 100;
-  const changeWidth = Math.abs(fraction - previousFraction) * 100;
   const notification = pending ? '保存中' : failed ? '待确认 · 可重试' : effect?.kind === 'complete' ? '目标完成'
     : effect?.kind === 'daily' ? '今日达标' : effect ? `${effect.amount > 0 ? '+' : '−'}${Math.abs(effect.amount)} ${unit}` : '';
 
@@ -97,7 +93,6 @@ export function TaskProgress({ label, ariaLabel, value, maximum, displayValue = 
           <div className="task-progress-fill" style={{ width: `${fraction * 100}%` }}>
             <PatternTexture texture={texture} receipt={receipt} reduced={reduced} />
           </div>
-          {receipt && changeWidth > 0 && <span key={receipt.id} className={`task-progress-change ${receipt.amount < 0 ? 'is-decrement' : ''}`} data-change={receipt.amount < 0 ? 'decrease' : 'increase'} style={{ left: `${changeStart}%`, width: `${changeWidth}%` }} aria-hidden="true" />}
           {receipt && (receipt.kind === 'daily' || receipt.kind === 'complete') && <span key={`sweep-${receipt.id}`} className="task-progress-sweep" aria-hidden="true" />}
         </div>
         {markMinimum && <span className="task-progress-minimum" style={{ left: `${minimum / maximum * 100}%` }} title={`最小完成量 ${minimum} ${unit}`}><span className="sr-only">最小完成量 {minimum} {unit}</span></span>}
