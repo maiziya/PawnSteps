@@ -222,7 +222,8 @@ export const useAppStore = create<AppState>((set, get) => {
         return;
       }
       set({ completionUndo: { ...receipt, pending: true } });
-      toast.loading('正在撤回最后一笔记录', { id: completionToastId(receipt.recordId), duration: Infinity, action: undefined });
+      const noticeOptions = { icon: undefined, description: undefined, className: undefined };
+      toast.loading('正在撤回最后一笔记录', { ...noticeOptions, id: completionToastId(receipt.recordId), duration: Infinity, action: undefined });
       try {
         await get().mutate(`/tasks/${receipt.taskId}/records/${receipt.recordId}`, undefined, 'DELETE');
         set(state => {
@@ -230,7 +231,7 @@ export const useAppStore = create<AppState>((set, get) => {
           if (next[receipt.taskId]?.requestId === receipt.requestId) delete next[receipt.taskId];
           return { quickFeedback: next, completionUndo: state.completionUndo?.recordId === receipt.recordId ? null : state.completionUndo };
         });
-        toast.success('已撤回最后一笔记录', { id: completionToastId(receipt.recordId), duration: 3000, action: undefined });
+        toast.success('已撤回最后一笔记录', { ...noticeOptions, id: completionToastId(receipt.recordId), duration: 3000, action: undefined });
         requestAnimationFrame(() => {
           const target = document.querySelector<HTMLButtonElement>(`[data-record-trigger="${receipt.taskId}"]`);
           if (!target) return;
@@ -241,7 +242,7 @@ export const useAppStore = create<AppState>((set, get) => {
         });
       } catch {
         if (get().completionUndo?.recordId !== receipt.recordId) {
-          toast.error('未能撤回，可在记录历史中重试', { id: completionToastId(receipt.recordId), duration: 4000, action: undefined });
+          toast.error('未能撤回，可在记录历史中重试', { ...noticeOptions, id: completionToastId(receipt.recordId), duration: 4000, action: undefined });
           return;
         }
         const retryReceipt = { ...receipt, pending: false, toastVisible: true };

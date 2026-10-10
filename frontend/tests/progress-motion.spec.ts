@@ -27,8 +27,9 @@ test('confirmed steps animate new work; decrement has distinct feedback and relo
   await expect(meter).toHaveAttribute('data-feedback', 'step');
   await expect(meter.getByRole('status')).toHaveText('+5 页');
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '5');
-  await expect(meter.locator('.task-progress-trail')).toHaveCount(1);
-  expect(await meter.locator('.task-progress-fill').evaluate(el => getComputedStyle(el).transitionDuration)).toContain('0.54s');
+  await expect(meter.locator('.task-progress-tile.is-filled')).toHaveCount(5);
+  await expect(meter.locator('[data-change="increase"]')).toHaveCount(5);
+  expect(await meter.locator('.task-progress-fill').first().evaluate(el => getComputedStyle(el).transitionDuration)).toContain('0.38s');
   await page.screenshot({ path: testInfo.outputPath('step-confirmed.png') });
   await step(page, task, -1);
   await expect(meter).toHaveAttribute('data-feedback', 'decrement');
@@ -40,6 +41,21 @@ test('confirmed steps animate new work; decrement has distinct feedback and relo
   await expect(meter.getByRole('status')).toHaveCount(0);
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '4');
   await expect(meter.locator('.task-progress-trail')).toHaveCount(0);
+});
+
+test('large goals use proportional partial cells and changing viewport never creates extra progress', async ({ page }) => {
+  const task = await seed(page, { target: 50 });
+  const card = taskCard(page, task.name), meter = card.locator('.task-progress');
+  await expect(meter).toHaveAttribute('data-design', 'steps');
+  await expect(meter.locator('.task-progress-tile')).toHaveCount(20);
+  await step(page, task, 1);
+  await expect(meter.locator('.task-progress-tile').first()).toHaveAttribute('data-fill', '40');
+  await expect(meter.locator('.task-progress-tile.is-filled')).toHaveCount(0);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(meter.locator('.task-progress-tile')).toHaveCount(10);
+  await expect(meter.locator('.task-progress-tile').first()).toHaveAttribute('data-fill', '20');
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+  expect((await persistedState(page)).tasks[0].record_count).toBe(1);
 });
 
 test('pending completion never celebrates; failure rolls back and confirmed completion offers animated feedback and undo', async ({ page }, testInfo) => {
@@ -76,6 +92,9 @@ test('pending completion never celebrates; failure rolls back and confirmed comp
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
   await expect(card).not.toHaveClass(/is-celebrating/);
   expect((await persistedState(page)).stats.xp).toBe(0);
+  const revoked = page.locator('[data-sonner-toast]').filter({ hasText: '已撤回最后一笔记录' });
+  await expect(revoked).toBeVisible();
+  expect(await revoked.innerText()).not.toContain('+100 XP');
 });
 
 test('minimum and goal stay distinct; extra work updates the counter without repeating the daily achievement', async ({ page }, testInfo) => {
