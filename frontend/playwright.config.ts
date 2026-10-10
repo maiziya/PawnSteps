@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:3017';
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
@@ -9,7 +11,11 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:3017',
+    baseURL,
+    storageState: {
+      cookies: [],
+      origins: [{ origin: new URL(baseURL).origin, localStorage: [{ name: 'pawnsteps-muted', value: 'true' }] }],
+    },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'off',
