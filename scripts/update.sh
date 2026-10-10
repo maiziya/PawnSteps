@@ -37,6 +37,9 @@ while (($#)); do
   esac
 done
 for program in git docker tar; do command -v "$program" >/dev/null || fail "缺少命令：$program"; done
+command -v timeout >/dev/null || fail '缺少 timeout 命令，请安装 Ubuntu coreutils'
+fetch_timeout=${PAWNSTEPS_FETCH_TIMEOUT:-120}
+[[ "$fetch_timeout" =~ ^[1-9][0-9]{0,3}$ ]] && ((fetch_timeout <= 1800)) || fail 'PAWNSTEPS_FETCH_TIMEOUT 需要是 1–1800 秒的整数'
 [[ $(git rev-parse --show-toplevel) == "$project_root" ]] || fail '请在原部署项目中运行'
 [[ $(git symbolic-ref --quiet --short HEAD) == main ]] || fail '服务器代码需要位于 main 分支'
 if ! git diff --quiet || ! git diff --cached --quiet; then
@@ -62,10 +65,16 @@ old_nginx=''
 backend_running=false
 frontend_running=false
 nginx_running=false
+fetch_pid=''
 cleanup() {
   result=$?
   trap - EXIT
   set +e
+  if [[ -n "$fetch_pid" ]]; then
+    # GNU timeout owns the fetch process group; cancel its helpers on Ctrl+C too.
+    kill -TERM -- "-$fetch_pid" 2>/dev/null || kill -TERM "$fetch_pid" 2>/dev/null
+    wait "$fetch_pid" 2>/dev/null
+  fi
   if ((result != 0)) && $maintenance; then
     if ! $migration_started; then
       $backend_running && docker start "$old_backend" >/dev/null
@@ -88,8 +97,29 @@ trap 'exit 143' TERM
 
 say '检查 GitHub main 分支…'
 export GIT_TERMINAL_PROMPT=0
-export GIT_SSH_COMMAND=${GIT_SSH_COMMAND:-'ssh -o BatchMode=yes'}
-git fetch origin main
+export GIT_SSH_COMMAND=${GIT_SSH_COMMAND:-'ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2'}
+fetched=false
+for ((attempt=1; attempt<=2; attempt++)); do
+  say "拉取 main（第 $attempt/2 次，单次最多 $fetch_timeout 秒）…"
+  timeout --kill-after=5s "${fetch_timeout}s" git -c http.version=HTTP/1.1 \
+      -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=30 fetch --progress origin main &
+  fetch_pid=$!
+  if wait "$fetch_pid"; then
+    fetch_pid=''
+    fetched=true
+    break
+  else
+    fetch_status=$?
+  fi
+  fetch_pid=''
+  if ((fetch_status == 124 || fetch_status == 137)); then
+    say '拉取超时，连接长时间没有完成。' >&2
+  else
+    say "拉取失败（退出码 ${fetch_status}）。" >&2
+  fi
+  if ((attempt < 2)); then say '2 秒后重试…'; sleep 2; fi
+done
+$fetched || fail '无法拉取 GitHub main，请检查服务器到 GitHub 的网络连接；旧站点保持运行，数据库迁移尚未开始'
 checkout_before=$(git rev-parse HEAD)
 target=$(git rev-parse FETCH_HEAD)
 git merge-base --is-ancestor "$checkout_before" "$target" || fail '本地与 origin/main 已分叉，不能安全自动更新'

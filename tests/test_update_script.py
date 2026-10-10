@@ -4,12 +4,67 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+GIT_STUB = r'''#!/usr/bin/env python3
+import json
+import os
+from pathlib import Path
+import sys
+import time
+
+args = sys.argv[1:]
+if 'fetch' in args:
+    log = Path(os.environ['FAKE_FETCH_LOG'])
+    previous = log.read_text().splitlines() if log.exists() else []
+    with log.open('a') as stream:
+        stream.write(json.dumps(args) + '\n')
+    scenario = os.environ.get('FAKE_FETCH_SCENARIO', '')
+    if scenario == 'hang':
+        print('remote: Compressing objects: 100% (10/10), done.', flush=True)
+        time.sleep(60)
+        sys.exit(1)
+    if scenario == 'fail-once' and not previous:
+        print('fatal: simulated temporary connection failure', file=sys.stderr)
+        sys.exit(128)
+os.execv(os.environ['REAL_GIT'], [os.environ['REAL_GIT'], *args])
+'''
+
+# Supply coreutils timeout semantics for macOS test hosts without GNU timeout.
+TIMEOUT_STUB = r'''#!/usr/bin/env python3
+import os
+import signal
+import subprocess
+import sys
+
+args = sys.argv[1:]
+kill_after = float(args.pop(0).split('=')[1].rstrip('s'))
+deadline = float(args.pop(0).rstrip('s'))
+process = subprocess.Popen(args, start_new_session=True)
+def stop(signum, frame):
+    os.killpg(process.pid, signum)
+    process.wait()
+    sys.exit(128 + signum)
+signal.signal(signal.SIGTERM, stop)
+signal.signal(signal.SIGINT, stop)
+try:
+    sys.exit(process.wait(timeout=deadline))
+except subprocess.TimeoutExpired:
+    os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=kill_after)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+    sys.exit(124)
+'''
+
 DOCKER_STUB = r'''#!/usr/bin/env python3
 import io
 import json
@@ -155,6 +210,14 @@ class UpdateScriptTests(unittest.TestCase):
         self.environment_before = (self.server / '.env').read_bytes()
         self.bin = self.root / 'bin'
         self.bin.mkdir()
+        self.real_git = shutil.which('git')
+        shims = [('git', GIT_STUB)]
+        if not shutil.which('timeout'):
+            shims.append(('timeout', TIMEOUT_STUB))
+        for name, source in shims:
+            executable = self.bin / name
+            executable.write_text(source)
+            executable.chmod(0o755)
         docker = self.bin / 'docker'
         docker.write_text(DOCKER_STUB)
         docker.chmod(0o755)
@@ -182,15 +245,33 @@ class UpdateScriptTests(unittest.TestCase):
         self.git('push', 'origin', 'main', cwd=self.source)
         return self.git('rev-parse', 'HEAD', cwd=self.source)
 
-    def run_update(self, *arguments, scenario=''):
+    def run_update(self, *arguments, scenario='', fetch_scenario='', deadline=30, interrupt_fetch=False):
         environment = {**os.environ, 'PATH': str(self.bin) + os.pathsep + os.environ['PATH'],
                        'FAKE_DOCKER_STATE': str(self.state_path), 'FAKE_DOCKER_LOG': str(self.log_path),
-                       'FAKE_DOCKER_SCENARIO': scenario}
+                       'FAKE_DOCKER_SCENARIO': scenario, 'REAL_GIT': self.real_git,
+                       'FAKE_FETCH_LOG': str(self.root / 'fetch-log.jsonl'),
+                       'FAKE_FETCH_SCENARIO': fetch_scenario, 'PAWNSTEPS_FETCH_TIMEOUT': '1'}
         environment.pop('PAWNSTEPS_ENV_FILE', None)
         environment.pop('TLS_CERT_DIR', None)
         environment.pop('COMPOSE_PROJECT_NAME', None)
-        return subprocess.run(['bash', 'scripts/update.sh', *arguments], cwd=self.server,
-                              env=environment, capture_output=True, text=True, timeout=30)
+        process = subprocess.Popen(['bash', 'scripts/update.sh', *arguments], cwd=self.server,
+                                   env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, errors='replace', start_new_session=True)
+        try:
+            if interrupt_fetch:
+                for _ in range(300):
+                    if (self.root / 'fetch-log.jsonl').exists():
+                        os.killpg(process.pid, signal.SIGINT)
+                        break
+                    time.sleep(0.01)
+                else:
+                    raise AssertionError('The fetch did not start')
+            stdout, stderr = process.communicate(timeout=deadline)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.communicate()
+            raise
+        return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
 
     def calls(self):
         return [json.loads(line)['args'] for line in self.log_path.read_text().splitlines()]
@@ -319,6 +400,34 @@ class UpdateScriptTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.git('rev-parse', 'HEAD', cwd=self.server), before)
         self.assertFalse(any('build' in call or 'stop' in call for call in self.calls()))
+
+    def test_stalled_fetch_is_bounded_and_leaves_checkout_and_services_untouched(self):
+        before = self.git('rev-parse', 'HEAD', cwd=self.server)
+        result = self.run_update(fetch_scenario='hang', deadline=8)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('拉取超时', result.stderr)
+        self.assertIn('旧站点保持运行', result.stderr)
+        self.assertEqual(self.git('rev-parse', 'HEAD', cwd=self.server), before)
+        self.assertTrue(all(json.loads(self.state_path.read_text())['running'].values()))
+        self.assertFalse(any('build' in call or 'stop' in call for call in self.calls()))
+        self.assertFalse((self.server / '.pawnsteps-update.lock').exists())
+
+    def test_temporary_fetch_failure_retries_and_uses_http1_without_changing_config(self):
+        target = self.publish()
+        result = self.run_update('--check', fetch_scenario='fail-once')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(target[:12], result.stdout)
+        fetches = [json.loads(line) for line in (self.root / 'fetch-log.jsonl').read_text().splitlines()]
+        self.assertEqual(len(fetches), 2)
+        self.assertTrue(all('http.version=HTTP/1.1' in call and '--progress' in call for call in fetches))
+        self.assertNotIn('http.version', (self.server / '.git/config').read_text())
+
+    @unittest.skipUnless(shutil.which('timeout'), 'Signal propagation requires native GNU timeout')
+    def test_interrupting_a_stalled_fetch_removes_the_update_lock(self):
+        result = self.run_update(fetch_scenario='hang', interrupt_fetch=True, deadline=5)
+        self.assertEqual(result.returncode, 130)
+        self.assertFalse((self.server / '.pawnsteps-update.lock').exists())
+        self.assertTrue(all(json.loads(self.state_path.read_text())['running'].values()))
 
 
 if __name__ == '__main__':

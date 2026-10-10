@@ -109,7 +109,7 @@ docker compose exec backend python -m app.cli create-admin
 
 已部署的服务器可在项目目录执行 `bash scripts/update.sh` 更新 `origin/main`。首次获取脚本先运行 `git pull --ff-only origin main`；之后脚本会自行获取版本。新版镜像构建完成后，脚本短暂停止应用写入，备份 PostgreSQL、本地上传图片和环境文件，再执行迁移、重建应用并检查 API 入口。已有 Compose 覆盖文件和 TLS 证书挂载自动沿用，数据库容器和持久卷保持原样；本地上传之外的 S3 对象由存储服务自身备份。备份保存在 `.pawnsteps-deploy/backups/`，包含私密数据，已排除 Git 和镜像构建。
 
-`bash scripts/update.sh --check` 仅检查版本，`--force` 可重新部署当前版本；自定义环境文件使用 `--env-file /absolute/path/app.env`。首次运行即使代码已经拉到最新也会部署，之后相同版本和配置会跳过重建。构建失败时旧服务保持运行；备份失败时尝试恢复原容器；迁移或健康检查失败时应用暂停，保留备份供排查或恢复，不自动降级数据库。数据库连接、持久卷或 PostgreSQL 镜像版本改变时需要人工确认。不要对需要保留的数据执行 `docker compose down -v`。
+`bash scripts/update.sh --check` 仅检查版本，`--force` 可重新部署当前版本；自定义环境文件使用 `--env-file /absolute/path/app.env`。拉取使用 HTTP/1.1，单次最多 120 秒，失败后重试一次；网络较慢时可使用 `PAWNSTEPS_FETCH_TIMEOUT=300 bash scripts/update.sh` 调整到 300 秒。拉取失败会退出，保留旧站点。脚本使用 Ubuntu coreutils 提供的 `timeout` 命令。首次运行即使代码已经拉到最新也会部署，之后相同版本和配置会跳过重建。构建失败时旧服务保持运行；备份失败时尝试恢复原容器；迁移或健康检查失败时应用暂停，保留备份供排查或恢复，不自动降级数据库。数据库连接、持久卷或 PostgreSQL 镜像版本改变时需要人工确认。不要对需要保留的数据执行 `docker compose down -v`。
 
 ## 验证
 
