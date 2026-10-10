@@ -1,12 +1,53 @@
 /* Patterned ribbons reveal actual progress without scaling their texture. */
 .task-progress {
   min-width: 0;
-  --progress-ink: var(--accent);
-  --progress-soft: var(--accent-soft);
-  --progress-fill-color: color-mix(in srgb, var(--progress-ink) 36%, var(--surface));
-  --progress-pattern-color: color-mix(in srgb, var(--progress-ink) 80%, var(--text));
+  --progress-ink: #89633d;
+  --progress-soft: #f4eadc;
+  --progress-fill-color: #e8d2ac;
+  --progress-pattern-color: #94734e;
 }
-.task-progress.is-met { --progress-ink: var(--success); --progress-soft: var(--success-soft); }
+.task-progress[data-pattern="leaf"] {
+  --progress-ink: #526e5b;
+  --progress-soft: #eaf0ea;
+  --progress-fill-color: #bed0c1;
+  --progress-pattern-color: #526e5f;
+}
+.task-progress[data-pattern="honeycomb"] {
+  --progress-ink: #7c6739;
+  --progress-soft: #f3ebd8;
+  --progress-fill-color: #e3d1a2;
+  --progress-pattern-color: #8b743f;
+}
+.task-progress.is-met {
+  --progress-ink: var(--success);
+  --progress-soft: var(--success-soft);
+  --progress-fill-color: #b8cdb2;
+  --progress-pattern-color: #4e674e;
+}
+.dark .task-progress {
+  --progress-ink: #d9ba95;
+  --progress-soft: #3f352b;
+  --progress-fill-color: #655037;
+  --progress-pattern-color: #d3b28a;
+}
+.dark .task-progress[data-pattern="leaf"] {
+  --progress-ink: #b9d0c0;
+  --progress-soft: #2d3f34;
+  --progress-fill-color: #3e5a4b;
+  --progress-pattern-color: #b3cdbb;
+}
+.dark .task-progress[data-pattern="honeycomb"] {
+  --progress-ink: #dfc996;
+  --progress-soft: #3f392a;
+  --progress-fill-color: #625537;
+  --progress-pattern-color: #d7c194;
+}
+.dark .task-progress.is-met {
+  --progress-ink: var(--success);
+  --progress-soft: var(--success-soft);
+  --progress-fill-color: #465d44;
+  --progress-pattern-color: #b6cea9;
+}
 .task-progress-layout { min-width: 0; min-height: 54px; }
 .task-progress-label { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 23px; margin-bottom: 7px; color: var(--muted); font-size: 12px; line-height: 20px; }
 .task-progress-caption { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; }
