@@ -9,7 +9,7 @@ async function weekdays(form: Locator, selected: number[]) {
   }
 }
 
-test('weekday rest tasks fold by default and can be edited back into today', async ({ page }) => {
+test('weekday rest tasks fold by default and frequency edits preserve today until tomorrow', async ({ page }) => {
   await openWorkspace(page);
   const today = (new Date(`${(await persistedState(page)).today}T12:00:00`).getDay() + 6) % 7;
   const name = uniqueName('休息日任务');
@@ -35,11 +35,54 @@ test('weekday rest tasks fold by default and can be edited back into today', asy
   await taskCard(page, name).getByRole('button', { name: `任务操作：${name}`, exact: true }).click();
   await page.getByRole('menuitem', { name: `编辑${name}`, exact: true }).click();
   await weekdays(form, [today]);
+  await expect(form).toContainText('执行频率调整从明天生效');
   await form.getByRole('button', { name: '保存调整', exact: true }).click();
   await expect(form).toBeHidden();
-  await expect(page.getByRole('button', { name: '今日休息的任务', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '今日休息的任务', exact: true })).toBeVisible();
   await expect(taskCard(page, name)).toBeVisible();
-  expect((await persistedState(page)).stats.today_total).toBe(1);
+  expect((await persistedState(page)).stats.today_total).toBe(0);
+  await page.reload();
+  await page.getByRole('button', { name: '今日休息的任务', exact: true }).click();
+  await taskCard(page, name).getByRole('button', { name: `任务操作：${name}`, exact: true }).click();
+  await page.getByRole('menuitem', { name: `编辑${name}`, exact: true }).click();
+  const days = form.getByRole('group', { name: '执行星期' }).getByRole('button');
+  await expect(days.nth(today)).toHaveAttribute('aria-pressed', 'true');
+  await expect(days.nth((today + 1) % 7)).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('weekday shortcuts select exactly the workdays or weekend', async ({ page }) => {
+  await openWorkspace(page);
+  await page.getByRole('button', { name: '添加任务', exact: true }).click();
+  const form = page.getByRole('dialog');
+  await weekdays(form, [0]);
+  const days = form.getByRole('group', { name: '执行星期' }).getByRole('button');
+  for (const [label, selected] of [['周末', [5, 6]], ['工作日', [0, 1, 2, 3, 4]]] as const) {
+    await form.getByRole('group', { name: '星期快捷选择' }).getByRole('button', { name: label, exact: true }).click();
+    for (let index = 0; index < 7; index++) await expect(days.nth(index)).toHaveAttribute('aria-pressed', String((selected as readonly number[]).includes(index)));
+  }
+});
+
+test('today picker prioritizes due tasks and allows voluntary work on a rest day', async ({ page }) => {
+  await openWorkspace(page);
+  const state = await persistedState(page);
+  const day = (new Date(`${state.today}T12:00:00`).getDay() + 6) % 7;
+  const headers = { 'X-Guest-Id': await page.evaluate(() => localStorage.getItem('pawnsteps-guest-id')!) };
+  const restName = uniqueName('自愿推进'), dueName = uniqueName('今天执行');
+  const restResponse = await page.request.post('/api/tasks', { headers, data: { name: restName, target: 20, daily_minimum: 2, schedule: { mode: 'weekdays', weekdays: [(day + 1) % 7] } } });
+  expect(restResponse.ok()).toBeTruthy();
+  const restTask = (await restResponse.json()).tasks.find((task: { name: string }) => task.name === restName);
+  expect((await page.request.post('/api/tasks', { headers, data: { name: dueName, target: 20, daily_minimum: 2 } })).ok()).toBeTruthy();
+  await page.reload();
+  await page.getByRole('button', { name: '今日计划', exact: true }).click();
+  await page.getByRole('button', { name: '选择今日任务', exact: true }).click();
+  const form = page.getByRole('dialog');
+  await expect(form.locator('.day-plan-option').first()).toContainText(dueName);
+  const restOption = form.locator('.day-plan-option').filter({ hasText: restName });
+  await expect(restOption).toContainText('今日休息，可自愿推进');
+  await restOption.getByRole('checkbox').check();
+  await form.getByRole('button', { name: '保存计划', exact: true }).click();
+  await expect(form).toBeHidden();
+  expect((await persistedState(page)).today_plan.task_ids).toEqual([restTask.id]);
 });
 
 test('weekly progress counts qualifying days rather than individual increments', async ({ page }) => {

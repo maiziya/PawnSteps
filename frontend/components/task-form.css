@@ -27,8 +27,10 @@
 }
 @media (max-height: 740px) {
   .task-form-dialog.dialog-content { padding-top: 18px; padding-bottom: 18px; }
-  .task-form-dialog .dialog-header { margin-bottom: 12px; }
+  .task-form-dialog .dialog-header { margin-bottom: 8px; }
   .task-form-fields { gap: 8px; }
+  .task-course-import { padding: 8px; gap: 6px; }
+  .task-form-footer { padding-top: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .task-kind-option { transition: none; }
@@ -42,7 +44,15 @@
 .task-course-options[open] summary { margin-bottom: 8px; }
 
 .task-schedule-fields { display: grid; gap: 8px; }
-.schedule-select label:not(.sr-only) { display: block; margin-bottom: 6px; font-weight: 500; }
+.schedule-select { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.schedule-select label:not(.sr-only) { flex-shrink: 0; font-weight: 500; }
+.schedule-select select { flex: 1; }
+.schedule-weekday-options { display: grid; gap: 5px; }
+.schedule-presets { display: flex; gap: 6px; }
+.schedule-presets button { min-height: 24px; padding: 1px 8px; border-radius: 5px; color: var(--muted); background: var(--surface-soft); font-size: 12px; }
+.schedule-presets button[aria-pressed="true"] { color: var(--primary); background: var(--accent-soft); }
+.schedule-presets button:hover { color: var(--primary); }
+.schedule-note { color: var(--muted); font-size: 12px; line-height: 18px; }
 .schedule-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
 .schedule-weekdays button { min-height: 44px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--surface); font-size: 13px; }
 .schedule-weekdays button[aria-pressed="true"] { border-color: var(--primary); color: var(--primary); background: var(--accent-soft); }

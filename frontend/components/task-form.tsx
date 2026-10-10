@@ -91,7 +91,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
     reset(defaultValues(task, nextKind));
     setKind(nextKind);
     setCourseDaily(!task || task.daily_minimum > 0 || task.daily_goal !== null);
-    setSchedule(task?.schedule || everydaySchedule());
+    setSchedule(task?.pending_schedule || task?.schedule || everydaySchedule());
     setCourseItems(task?.course_items || []);
     setImportName('');
     setImportError('');
@@ -239,7 +239,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
             {kind === 'plan' && !task && <div className="space-y-1.5"><label htmlFor="task-plan-start" className="text-sm font-medium">开始日期</label><Input id="task-plan-start" type="date" {...register('planStartDate')} />{errors.planStartDate && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.planStartDate.message}</p>}</div>}
           </div>}
 
-          {(kind === 'normal' || kind === 'daily') && <div className="task-schedule-fields"><ScheduleSelect value={schedule} onChange={updateSchedule} /><ScheduleOptions value={schedule} onChange={updateSchedule} />{errors.root?.schedule && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.root.schedule.message}</p>}</div>}
+          {(kind === 'normal' || kind === 'daily') && <div className="task-schedule-fields"><ScheduleSelect value={schedule} onChange={updateSchedule} /><ScheduleOptions value={schedule} onChange={updateSchedule} />{task && <p className="schedule-note">执行频率调整从明天生效，历史记录保留。</p>}{errors.root?.schedule && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.root.schedule.message}</p>}</div>}
 
           {kind === 'plan' && (task ? <div className="rounded-xl bg-[var(--background)] p-4 text-sm text-[var(--muted)]"><CalendarDays size={16} className="mb-2" />从 {task.plan_start_date} 开始，共 {task.daily_plan?.length} 天，目标任务总量 {task.target} {task.unit}。</div> : <div>
             <div className="space-y-1.5"><label htmlFor="task-plan" className="text-sm font-medium">每天的配额</label><textarea id="task-plan" rows={1} className="field task-plan-input font-mono text-sm" {...register('plan')} /><p className="text-xs leading-relaxed text-[var(--muted)]">逗号分隔每日配额，0 或 -1 表示休息。</p>{errors.plan && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.plan.message}</p>}</div>
@@ -254,7 +254,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
           </div>)}
 
           {kind === 'course' && <div className="task-course-daily">
-            <div className="task-course-plan-heading"><label className="task-course-daily-toggle"><input type="checkbox" checked={courseDaily} onChange={event => toggleCourseDaily(event.target.checked)} />每日学习计划</label>{courseDaily && <ScheduleSelect compact value={schedule} onChange={updateSchedule} />}</div>{courseDaily && <ScheduleOptions value={schedule} onChange={updateSchedule} />}{errors.root?.schedule && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.root.schedule.message}</p>}
+            <div className="task-course-plan-heading"><label className="task-course-daily-toggle"><input type="checkbox" checked={courseDaily} onChange={event => toggleCourseDaily(event.target.checked)} />每日学习计划</label>{courseDaily && <ScheduleSelect compact value={schedule} onChange={updateSchedule} />}</div>{courseDaily && <ScheduleOptions value={schedule} onChange={updateSchedule} />}{task && courseDaily && <p className="schedule-note">执行频率调整从明天生效，历史记录保留。</p>}{errors.root?.schedule && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.root.schedule.message}</p>}
             {courseDaily && <div className="task-settings-grid">
               <div className="space-y-1.5"><label htmlFor="course-minimum">最小完成量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-minimum" aria-label="最小完成量" type="number" min={1} max={courseCount || 10000} {...register('dailyQuota')} />{errors.dailyQuota && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyQuota.message}</p>}</div>
               <div className="space-y-1.5"><label htmlFor="course-goal">每日目标量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-goal" aria-label="每日目标量" type="number" min={1} max={courseCount || 10000} {...register('dailyGoal')} />{errors.dailyGoal && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyGoal.message}</p>}</div>

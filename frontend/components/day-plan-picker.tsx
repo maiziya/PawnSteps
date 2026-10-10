@@ -37,7 +37,8 @@ export function DayPlanPicker({ open, onClose, onSaved }: { open: boolean; onClo
   const retained = (id: string) => plan.task_ids.includes(id);
   const eligible = (task: Task) => availableForPlan(task) || retained(task.id);
   const candidates = tasks.filter(task => eligible(task) || selected.includes(task.id));
-  const visible = candidates.filter(task => task.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const visible = candidates.filter(task => task.name.toLowerCase().includes(query.trim().toLowerCase()))
+    .sort((first, second) => Number(second.is_scheduled_today) - Number(first.is_scheduled_today));
   const unavailable = selected.filter(id => !tasks.some(task => task.id === id));
   const invalid = selected.some(id => { const task = tasks.find(task => task.id === id); return !task || !eligible(task); });
   function toggle(id: string) {

@@ -7,7 +7,8 @@ export interface Task {
   daily_done: boolean; daily_date: string | null; daily_plan: number[] | null;
   plan_start_date: string | null; course_items: CourseItem[] | null;
   owner_id: string; created_at: string; updated_at: string;
-  schedule: TaskSchedule; is_scheduled_today: boolean; weekly_completed: number; weekly_target: number | null;
+  schedule: TaskSchedule; pending_schedule?: TaskSchedule | null; pending_schedule_date?: string | null;
+  is_scheduled_today: boolean; weekly_completed: number; weekly_target: number | null;
   unit: string; today_amount: number; record_count: number; plan_expired: boolean;
 }
 export interface ProgressRecord {

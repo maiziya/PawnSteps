@@ -143,6 +143,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
             <div><dt>累计完成</dt><dd>{task.progress} {totalUnit}</dd></div>
             {(!isCourse || dailyGoal > 0) && <><div><dt>每日目标量</dt><dd>{dailyGoal > 0 ? `${dailyGoal} ${task.unit}` : '未设置'}</dd></div><div><dt>最小完成量</dt><dd>{dailyMinimum > 0 ? `${dailyMinimum} ${task.unit}` : restDay ? '休息日' : '未设置'}</dd></div></>}
             <div><dt>执行周期</dt><dd>{frequencyLabel}</dd></div><div><dt>今日完成</dt><dd>{todayAmount} {isCourse ? '节' : task.unit}</dd></div><div><dt>优先级</dt><dd>{priority}</dd></div>
+            {task.pending_schedule && <div><dt>{task.pending_schedule_date} 起</dt><dd>{scheduleLabel(task.pending_schedule)}</dd></div>}
           </dl>
           {task.description && <p>{task.description}</p>}{reward && <p className="compact-task-reward-detail"><Gift size={15} aria-hidden="true" /><span>关联奖励：{reward.name}</span></p>}
           <button type="button" onClick={() => setDescriptionOpen(false)}>{`收起${detailsLabel}`}</button>
