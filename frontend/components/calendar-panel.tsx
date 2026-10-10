@@ -49,15 +49,15 @@ function ActivityRow({ entry }: { entry: HistoryEntry }) {
   const status = activityStatus(entry);
   const hasMinimum = Boolean(entry.quota && entry.quota > 0);
   const quantity = hasMinimum ? `${entry.amount} / ${entry.quota} ${entry.unit}` : `${entry.amount} ${entry.unit}`;
-  const detail = status === 'partial' ? `还差 ${entry.quota! - entry.amount} ${entry.unit}`
-    : status === 'exceeded' ? `超量完成 +${entry.amount - entry.quota!}`
-    : status === 'met' ? '已达标' : '已记录';
+  const label = status === 'recorded' ? '已记录' : statusLabels[status];
+  const difference = status === 'partial' ? `差 ${entry.quota! - entry.amount} ${entry.unit}`
+    : status === 'exceeded' ? `+${entry.amount - entry.quota!} ${entry.unit}` : '';
   return <li>
     <span className={`calendar-complete-check activity-${status}`} aria-hidden="true">{status === 'met' || status === 'exceeded' ? <Check size={14} /> : <Circle size={7} fill="currentColor" />}</span>
     <strong className="calendar-entry-name" title={entry.task_name}>{entry.task_name}</strong>
     <div className="calendar-entry-progress" title={activityLabel(entry)}>
       <span className="sr-only">{activityLabel(entry)}</span>
-      <div aria-hidden="true"><span className="calendar-entry-quantity">{quantity}</span><span className={`calendar-entry-status activity-${status}`}>{detail}</span></div>
+      <div aria-hidden="true"><span className="calendar-entry-quantity">{quantity}</span><span className={`calendar-entry-status activity-${status}`}><span className="calendar-status-label">{label}</span><span className="calendar-status-difference">{difference}</span></span></div>
     </div>
   </li>;
 }

@@ -50,7 +50,7 @@
 @media (max-width: 900px) {
   .calendar-week-preview { display: none; }
   .calendar-week-date { border-bottom: 0; }
-  .calendar-week-detail .calendar-entry-progress { width: auto; max-width: 145px; }
+  .calendar-week-detail .calendar-entry-progress { width: 130px; max-width: 130px; }
   .calendar-week-detail .calendar-entry-progress>div[aria-hidden="true"] { display: block; }
   .calendar-week-detail .calendar-entry-status { margin-top: 2px; }
 }
