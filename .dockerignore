@@ -13,3 +13,5 @@ test-results
 **/playwright-report
 **/.pytest_cache
 **/*.tsbuildinfo
+.pawnsteps-deploy
+.pawnsteps-update.lock

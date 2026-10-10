@@ -35,6 +35,8 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: pip install -r backend/requirements.lock -r backend/requirements-dev.txt
+      - name: Deployment updater regressions
+        run: python -m unittest discover -s tests -p 'test_update_script.py' -v
       - name: SQLite regressions
         working-directory: backend
         run: pytest -q

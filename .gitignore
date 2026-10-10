@@ -13,3 +13,5 @@ test-results/
 playwright-report/
 .DS_Store
 *.tsbuildinfo
+.pawnsteps-deploy/
+.pawnsteps-update.lock/
