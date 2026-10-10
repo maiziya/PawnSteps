@@ -20,9 +20,6 @@
 .compact-task-button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
 .compact-task-drag { touch-action: none; cursor: grab; }
 .compact-task-drag:active { cursor: grabbing; }
-.compact-progress-track { height: 6px; overflow: hidden; border-radius: 8px; background: var(--border); }
-.compact-progress-fill { height: 100%; border-radius: inherit; background: var(--primary); transition: width 380ms cubic-bezier(.2,.75,.25,1), background-color 200ms ease; }
-.compact-progress-fill.is-complete { background: var(--success); }
 .compact-course-progress { display: flex; align-items: center; gap: 20px; min-height: 44px; margin-top: 6px; }
 .compact-quick-progress { display: grid; grid-template-columns: minmax(100px,1fr) auto; align-items: center; gap: 18px; min-height: 44px; margin-top: 6px; }
 .compact-quick-actions { display: flex; align-items: center; gap: 6px; }
@@ -90,5 +87,9 @@
   .compact-history-button:not(.with-label) { min-width: 32px; min-height: 32px; border-radius: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .compact-progress-fill, .compact-quick-button { transition: none; }
+  .compact-quick-button { transition: none; }
 }
+
+.compact-quick-button { transition: transform 140ms, background-color 150ms, color 150ms; }
+.compact-quick-button:active:not(:disabled) { transform: translateY(1px) scale(.94); }
+@media (prefers-reduced-motion: reduce) { .compact-quick-button:active:not(:disabled) { transform: none; } }

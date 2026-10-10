@@ -5,11 +5,13 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Archive, ArrowRight, BookOpen, CalendarDays, Check, FileText, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Timer, Trash2 } from 'lucide-react';
+import { Archive, ArrowRight, BookOpen, CalendarDays, FileText, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Timer, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ownerIdentity } from '@/lib/api';
 import type { Task } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
+import { TaskProgress } from './task-progress';
+import { CompletionMark } from './completion-mark';
 import { scheduleLabel } from './schedule-fields';
 import './task-card.css';
 
@@ -30,6 +32,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
   const today = useAppStore(state => state.today);
   const quickRecord = useAppStore(state => state.quickRecord);
   const feedback = useAppStore(state => state.quickFeedback[task.id]);
+  const progressEffect = useAppStore(state => state.progressFeedback[task.id]);
   const reward = useAppStore(state => state.rewards.find(reward => reward.id === task.reward_id));
   const reducedMotion = useReducedMotion();
   const descriptionId = useId();
@@ -49,14 +52,14 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
   const todayAmount = previewing ? Math.max(0, feedback.previousToday + feedback.amount) : task.today_amount;
   const meterMaximum = useDailyMeter ? dailyGoal : task.target;
   const meterCurrent = useDailyMeter ? Math.min(meterMaximum, todayAmount) : Math.max(0, Math.min(task.target, previewing ? feedback.previousProgress + feedback.amount : task.progress));
-  const percent = meterMaximum ? Math.min(100, meterCurrent / meterMaximum * 100) : 0;
+
   const Icon = isCourse ? BookOpen : isPlan ? CalendarDays : isDaily ? Sun : Flag;
   const priority = { high: '高优先级', medium: '中优先级', low: '低优先级' }[task.priority];
   const detailsLabel = task.description ? '说明' : '详情';
   const totalUnit = isCourse ? '节' : isDaily && !isPlan ? '天' : task.unit;
-  const totalLabel = `${task.progress} / ${task.target} ${totalUnit}`;
+
   const minimumLabel = restDay ? '今日休息' : inactivePlan ? (task.plan_expired ? '计划已结束' : `${task.plan_start_date} 开始`) : dailyMinimum > 0 ? `最小完成 ${dailyMinimum} ${task.unit}` : '最小完成 未设置';
-  const meterLabel = `${useDailyMeter ? todayAmount : meterCurrent} / ${meterMaximum} ${isDaily && !isPlan && !useDailyMeter ? '天' : task.unit}`;
+
   const meterCaption = useDailyMeter ? '今日进度' : '总进度';
   const frequencyLabel = scheduleLabel(task.schedule);
   const overdue = Boolean(task.deadline && today && task.deadline < today && !task.is_done);
@@ -89,10 +92,10 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
 
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 20 : undefined }} className="task-sortable">
-      <motion.article data-quick-task={task.id} layout={!isDragging && !reducedMotion} initial={reducedMotion ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`panel task-card compact-task-card ${task.is_done ? 'task-completed' : ''}`}>
+      <motion.article data-quick-task={task.id} layout={!isDragging && !reducedMotion} initial={reducedMotion ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`panel task-card compact-task-card ${task.is_done ? 'task-completed' : ''} ${progressEffect?.kind === 'complete' ? 'is-celebrating' : ''}`}>
         <div className="compact-task-heading">
           <div className={`compact-task-icon ${task.is_done ? 'is-complete' : ''}`} aria-hidden="true">
-            {task.is_done ? <motion.span key="check" initial={reducedMotion ? false : { scale: 0.6 }} animate={{ scale: 1 }}><Check size={20} /></motion.span> : <Icon size={19} strokeWidth={1.7} />}
+            {task.is_done ? <CompletionMark celebrate={progressEffect?.kind === 'complete'} /> : <Icon size={19} strokeWidth={1.7} />}
           </div>
           <div className="compact-task-title">
             <div className="compact-task-name-row">
@@ -128,19 +131,13 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
 
         {isCourse ? <div className="compact-course-progress">
           <div className="compact-course-meter">
-            <div className="compact-course-meter-label"><span>学习进度</span><span>{totalLabel}</span></div>
-            <div className="compact-progress-track" role="progressbar" aria-label={`${task.name}课程进度`} aria-valuemin={0} aria-valuemax={task.target} aria-valuenow={task.progress}>
-              <div className="compact-progress-fill is-complete" style={{ width: `${task.target ? task.progress / task.target * 100 : 0}%` }} />
-            </div>
+            <TaskProgress label="学习进度" ariaLabel={`${task.name}课程进度`} value={task.progress} maximum={task.target} unit="节" met={task.is_done} effect={progressEffect} />
           </div>
           {focusAction && !task.is_done && <button type="button" className="compact-history-button" disabled={busy} aria-label={`${task.name}开始专注`} title="开始专注" onClick={() => onStartFocus(task.id)}><Timer size={17} /></button>}
           <button type="button" className="compact-course-open" data-course-trigger={task.id} aria-label={`${task.name}${task.is_done ? '查看课程' : '继续学习'}`} onClick={() => onOpenCourse(task.id)}>{task.is_done ? '查看课程' : '继续学习'}<ArrowRight size={16} /></button>
         </div> : <div className={`compact-quick-progress ${task.is_done ? 'is-readonly' : ''}`}>
           <div className="compact-course-meter">
-            <div className="compact-course-meter-label"><span>{meterCaption}</span><span title={meterLabel}>{meterLabel}</span></div>
-            <div className="compact-progress-track" role="progressbar" aria-label={`${task.name}${useDailyMeter ? '今日' : '总'}进度`} aria-valuemin={0} aria-valuemax={meterMaximum} aria-valuenow={meterCurrent} aria-valuetext={`${useDailyMeter ? '今日 ' : ''}${meterLabel}`}>
-              <div className={`compact-progress-fill ${percent >= 100 && !task.plan_expired ? 'is-complete' : ''}`} style={{ width: `${percent}%` }} />
-            </div>
+            <TaskProgress label={meterCaption} ariaLabel={`${task.name}${useDailyMeter ? '今日' : '总'}进度`} value={meterCurrent} displayValue={useDailyMeter ? todayAmount : meterCurrent} maximum={meterMaximum} unit={isDaily && !isPlan && !useDailyMeter ? '天' : task.unit} minimum={useDailyMeter ? dailyMinimum : 0} met={!task.plan_expired && (useDailyMeter ? task.daily_done : task.is_done)} pending={saving} failed={feedback?.phase === 'failed'} effect={progressEffect} daily={useDailyMeter} />
           </div>
           <div className="compact-quick-actions">
             {!task.is_done && <div className="compact-stepper" role="group" aria-label={`${task.name}调整进度`}>

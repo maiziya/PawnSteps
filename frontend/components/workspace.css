@@ -79,10 +79,6 @@ html { scroll-padding-top: 124px; }
 .course-drawer-eyebrow { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--success); margin-bottom: 12px; }
 .course-drawer-header h2 { font-size: 22px; font-weight: 600; padding-right: 22px; overflow-wrap: anywhere; }
 .course-drawer-header p { margin-top: 10px; font-size: 14px; color: var(--muted); max-height: 100px; overflow-y: auto; overflow-wrap: anywhere; }
-.course-drawer-progress { display: flex; align-items: center; justify-content: space-between; gap: 14px; font-size: 13px; color: var(--muted); margin: 20px 0 8px; }
-.course-drawer-progress strong { font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; }
-.course-progress-track { height: 6px; background: var(--line); border-radius: 8px; overflow: hidden; }
-.course-progress-track>span { display: block; height: 100%; background: var(--success); transition: width 180ms; }
 .course-drawer-body { padding: 0 24px 24px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; flex: 1; }
 .course-drawer-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
 .course-drawer-footer>span { font-size: 12px; color: var(--muted); }
