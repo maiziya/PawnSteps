@@ -35,3 +35,14 @@ async def test_mutation_date_matches_configured_timezone_across_midnight(client,
     assert refreshed["tasks"][0]["daily_done"] is False
     assert refreshed["tasks"][0]["daily_progress"] == 0
     assert refreshed["tasks"][0]["progress"] == 1
+
+
+async def test_task_creation_timestamp_keeps_utc_offset_after_reload(client, guest_headers):
+    created = assert_mutation(await client.post('/api/tasks', headers=guest_headers,
+        json={'name': 'Creation date', 'target': 10}), status=201)['tasks'][0]
+    refreshed = assert_mutation(await client.get('/api/state', headers=guest_headers))['tasks'][0]
+    assert created['created_at'] == refreshed['created_at']
+    for field in ['created_at', 'updated_at']:
+        instant = datetime.fromisoformat(refreshed[field])
+        assert instant.tzinfo is not None
+        assert instant.utcoffset() == timezone.utc.utcoffset(instant)

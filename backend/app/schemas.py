@@ -258,6 +258,12 @@ class TaskOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @field_validator('created_at', 'updated_at')
+    @classmethod
+    def utc_timestamp(cls, value: datetime) -> datetime:
+        # SQLite drops timezone metadata; persisted timestamps are always UTC.
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
 
 class RewardOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
