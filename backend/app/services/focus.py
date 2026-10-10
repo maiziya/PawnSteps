@@ -74,7 +74,7 @@ def output(row: FocusSession, now: datetime) -> dict:
         closed = sum(max(0, (aware(item.ended_at) - aware(item.started_at)).total_seconds()) for item in row.intervals if item.ended_at)
         deadline = aware(running.started_at) + timedelta(seconds=max(0, row.duration_seconds - closed))
     task = row.task
-    available = task is not None and task.deleted_at is None
+    available = task is not None and task.deleted_at is None and task.archived_at is None
     can_record = available and (('节' if task.course_items is not None else task.unit) == row.task_unit) and (not task.is_done or (task.daily_quota > 0 and task.daily_done and task.daily_date == tracker.today()))
     if available and task.daily_plan is not None:
         index = (tracker.today() - task.plan_start_date).days
@@ -150,6 +150,8 @@ async def start(session: AsyncSession, owner_id: str, body: FocusStart) -> dict:
         else:
             raise HTTPException(409, '已有计时器，请先结束或确认当前这一轮')
     task = await tracker.get_task(session, owner_id, body.task_id) if body.task_id else None
+    if task:
+        tracker.require_active(task)
     if task and task.is_done:
         raise HTTPException(409, '请选择进行中的任务')
     phase_minutes = {'focus': prefs.focus_minutes, 'short_break': prefs.short_break_minutes, 'long_break': prefs.long_break_minutes}

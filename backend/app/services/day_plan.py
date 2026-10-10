@@ -14,7 +14,7 @@ from app.schemas import DayPlanUpdate, TaskOut
 async def projection(session: AsyncSession, owner_id: str, day: date) -> dict:
     task_ids = list((await session.scalars(select(DayPlanItem.task_id).join(Task)
         .where(DayPlanItem.owner_id == owner_id, DayPlanItem.date == day,
-               Task.owner_id == owner_id, Task.deleted_at.is_(None))
+               Task.owner_id == owner_id, Task.deleted_at.is_(None), Task.archived_at.is_(None))
         .order_by(DayPlanItem.position))).all())
     return {'date': day, 'task_ids': task_ids}
 

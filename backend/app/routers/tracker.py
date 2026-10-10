@@ -63,6 +63,18 @@ async def update_task(task_id: UUID, body: TaskPatch, session: Session, owner_id
         return await tracker.update_task(session, owner_id, task_id, body)
 
 
+@router.post('/tasks/{task_id}/archive', response_model=MutationResponse)
+async def archive_task(task_id: UUID, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await tracker.archive_task(session, owner_id, task_id)
+
+
+@router.post('/tasks/{task_id}/restore', response_model=MutationResponse)
+async def restore_task(task_id: UUID, session: Session, owner_id: OwnerId):
+    async with tracker.owner_transaction(session, owner_id):
+        return await tracker.archive_task(session, owner_id, task_id, restore=True)
+
+
 @router.post('/tasks/{task_id}/progress', response_model=MutationResponse)
 @router.post('/tasks/{task_id}/daily', response_model=MutationResponse)
 @router.post('/tasks/{task_id}/daily/undo', response_model=MutationResponse)

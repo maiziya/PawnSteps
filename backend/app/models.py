@@ -80,10 +80,21 @@ class Task(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     undo_token: Mapped[str | None] = mapped_column(String(128), unique=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     undo_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     schedules: Mapped[list['TaskSchedule']] = relationship(back_populates='task', cascade='all, delete-orphan', lazy='selectin')
+    archive_periods: Mapped[list['TaskArchivePeriod']] = relationship(back_populates='task', cascade='all, delete-orphan', lazy='selectin')
     history: Mapped[list['DailyHistory']] = relationship(back_populates='task', cascade='all, delete-orphan', lazy='selectin')
     records: Mapped[list['ProgressRecord']] = relationship(back_populates='task', cascade='all, delete-orphan')
+
+
+class TaskArchivePeriod(Base):
+    __tablename__ = 'task_archive_periods'
+    __table_args__ = (CheckConstraint('ends_on IS NULL OR ends_on >= starts_on', name='ck_archive_period_dates'),)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('tasks.id', ondelete='CASCADE'), primary_key=True)
+    starts_on: Mapped[DateValue] = mapped_column(Date, primary_key=True)
+    ends_on: Mapped[DateValue | None] = mapped_column(Date, nullable=True)
+    task: Mapped['Task'] = relationship(back_populates='archive_periods')
 
 
 class TaskSchedule(Base):

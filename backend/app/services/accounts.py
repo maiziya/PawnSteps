@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import create_access_token, hash_password, verify_password
 from app.config import settings
-from app.models import AuthRate, AuthState, DailyHistory, EmailCode, Owner, ProgressRecord, Reward, Task, TaskSchedule, User
+from app.models import AuthRate, AuthState, DailyHistory, EmailCode, Owner, ProgressRecord, Reward, Task, TaskArchivePeriod, TaskSchedule, User
 from app.schemas import ProgressRecordOut
 from app.services import day_plan, focus, tracker
 from app.services.storage import save_image
@@ -381,7 +381,10 @@ async def export_data(session: AsyncSession, user_id: UUID) -> dict:
             .order_by(ProgressRecord.created_at, ProgressRecord.id))).all()
         schedule_rows = (await session.scalars(select(TaskSchedule).join(Task)
             .where(Task.owner_id == f"user:{user.id}").order_by(TaskSchedule.task_id, TaskSchedule.starts_on))).all()
+        archive_rows = (await session.scalars(select(TaskArchivePeriod).join(Task)
+            .where(Task.owner_id == f"user:{user.id}").order_by(TaskArchivePeriod.task_id, TaskArchivePeriod.starts_on))).all()
         result = {"format_version": 2, "exported_at": _now(), "user": public_user(user), **state,
+                  "archive_history": [{"task_id": str(row.task_id), "starts_on": row.starts_on, "ends_on": row.ends_on} for row in archive_rows],
                   "schedule_history": [{"task_id": str(row.task_id), "starts_on": row.starts_on, "enabled": row.enabled,
                                         "mode": row.mode, "weekdays": row.weekdays, "weekly_target": row.weekly_target} for row in schedule_rows],
                   "records": [ProgressRecordOut.model_validate(record) for record in records],

@@ -260,6 +260,12 @@ class TaskOut(BaseModel):
     owner_id: str
     created_at: datetime
     updated_at: datetime
+    archived_at: datetime | None = None
+
+    @field_validator('archived_at')
+    @classmethod
+    def archive_timestamp(cls, value: datetime | None) -> datetime | None:
+        return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
 
     @field_validator('created_at', 'updated_at')
     @classmethod
@@ -311,6 +317,7 @@ class MutationResponse(BaseModel):
     today: date
     timezone: str
     tasks: list[TaskOut]
+    archived_tasks: list[TaskOut] = Field(default_factory=list)
     rewards: list[RewardOut]
     stats: Stats
     today_plan: DayPlanOut

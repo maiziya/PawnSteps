@@ -45,7 +45,14 @@ def eligible(task: Task) -> bool:
     return bool(task.daily_quota or task.daily_minimum or task.daily_plan is not None)
 
 
+def paused_on(task: Task, day: date) -> bool:
+    return any(row.starts_on <= day and (row.ends_on is None or day < row.ends_on)
+               for row in task.archive_periods)
+
+
 def active_on(task: Task, day: date) -> bool:
+    if paused_on(task, day):
+        return False
     if not enabled_on(task, day):
         return False
     start = min([_business_date(task.created_at), *[row.starts_on for row in task.schedules], *[row.date for row in task.history]])
@@ -75,7 +82,9 @@ def weekly_progress(task: Task, day: date) -> tuple[int, int | None]:
     monday = day - timedelta(days=day.weekday())
     start = max(monday, effective)
     end = monday + timedelta(days=6)
-    target = min(config.weekly_target or 1, (end - start).days + 1)
+    eligible_days = sum(not paused_on(task, start + timedelta(days=offset))
+                        for offset in range((end - start).days + 1))
+    target = min(config.weekly_target or 1, max(1, eligible_days))
     count = sum(row.completed and row.quota > 0 for row in task.history if start <= row.date <= day)
     return count, target
 

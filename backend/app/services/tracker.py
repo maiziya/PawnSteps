@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import DailyHistory, Owner, ProgressAdjustment, ProgressRecord, Reward, Task, TaskSchedule
+from app.models import DailyHistory, FocusSession, Owner, ProgressAdjustment, ProgressRecord, Reward, Task, TaskArchivePeriod, TaskSchedule
 from app.schemas import CourseUpdate, DayPlanUpdate, ProgressRecordCreate, ProgressRecordOut, ProgressRecordPatch, RewardCreate, RewardOut, RewardPatch, ScheduleConfig, TaskCreate, TaskOut, TaskPatch
 
 
@@ -92,6 +92,11 @@ async def get_reward(session: AsyncSession, owner_id: str, reward_id: UUID) -> R
     return reward
 
 
+def require_active(task: Task) -> None:
+    if task.archived_at is not None:
+        raise HTTPException(409, '请先恢复归档任务，再修改或记录进度')
+
+
 def _history_row(task: Task, day: date, quota: int) -> DailyHistory:
     for row in task.history:
         if row.date == day:
@@ -162,6 +167,8 @@ def _refresh_task(task: Task, day: date, amounts: dict[date | None, int], record
         # Rest days project automatically; they never become fabricated work records.
         for offset in range(max(0, min(index + 1, len(task.daily_plan)))):
             record_day = start + timedelta(days=offset)
+            if schedules.paused_on(task, record_day):
+                continue
             quota = max(0, task.daily_plan[offset])
             existing = next((row for row in task.history if row.date == record_day), None)
             if quota == 0 or record_day in amounts or existing is not None:
@@ -231,7 +238,13 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
     day = today()
     amounts, counts = await _record_totals(session, tasks)
     for task in tasks:
-        _refresh_task(task, day, amounts.get(task.id, {}), counts.get(task.id, 0))
+        if task.archived_at is None:
+            _refresh_task(task, day, amounts.get(task.id, {}), counts.get(task.id, 0))
+        else:
+            task.today_amount = (_course_day_amounts(task) if task.course_items is not None else amounts.get(task.id, {})).get(day, 0)
+            task.record_count = counts.get(task.id, 0)
+            task.plan_expired = bool(task.daily_plan is not None and task.plan_start_date is not None
+                                     and day >= task.plan_start_date + timedelta(days=len(task.daily_plan)))
         schedules.project(task, day)
     rewards = list((await session.scalars(select(Reward).where(Reward.owner_id == owner_id).order_by(Reward.position, Reward.id))).all())
     existing = {reward.streak_target for reward in rewards if reward.streak_target}
@@ -260,13 +273,15 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
             unlocked = reward
     await session.flush()
     completed = sum(task.is_done for task in tasks)
-    daily_tasks = [task for task in tasks if schedules.counts_today(task, day)
+    daily_tasks = [task for task in tasks if task.archived_at is None and schedules.counts_today(task, day)
                    and (not task.is_done or task.daily_done)]
     return {
         'today': day,
         'timezone': settings.timezone,
         'today_plan': await day_plan.projection(session, owner_id, day),
-        'tasks': [TaskOut.model_validate(task) for task in sorted(tasks, key=lambda task: (task.is_done, task.position, task.created_at))],
+        'tasks': [TaskOut.model_validate(task) for task in sorted(tasks, key=lambda task: (task.is_done, task.position, task.created_at)) if task.archived_at is None],
+        'archived_tasks': [TaskOut.model_validate(task) for task in sorted(
+            (task for task in tasks if task.archived_at is not None), key=lambda task: aware(task.archived_at), reverse=True)],
         'rewards': [RewardOut.model_validate(reward) for reward in sorted(rewards, key=lambda reward: reward.position)],
         'stats': {'total': len(tasks), 'completed': completed, 'in_progress': len(tasks) - completed, 'xp': completed * 100, 'streak': streak, 'today_completed': sum(task.daily_done for task in daily_tasks), 'today_total': len(daily_tasks)},
         'unlocked_reward': RewardOut.model_validate(unlocked) if unlocked else None,
@@ -317,6 +332,7 @@ async def create_task(session: AsyncSession, owner_id: str, body: TaskCreate) ->
 async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body: TaskPatch) -> dict:
     await snapshot(session, owner_id)
     task = await get_task(session, owner_id, task_id)
+    require_active(task)
     values = body.model_dump(exclude_unset=True)
     for key, value in values.items():
         if value is None and key not in {'reward_id', 'deadline'} and not (key == 'daily_goal' and task.course_items is not None):
@@ -412,6 +428,7 @@ async def create_record(session: AsyncSession, owner_id: str, task_id: UUID, bod
             if existing.request_fingerprint != fingerprint:
                 raise HTTPException(409, 'This request ID was already used for a different record')
             return {**await snapshot(session, owner_id), 'record': ProgressRecordOut.model_validate(existing)}
+    require_active(task)
     if task.course_items is not None:
         raise HTTPException(422, 'Course progress is recorded through its checklist')
     if task.daily_plan is not None:
@@ -441,6 +458,7 @@ async def decrement_progress(session: AsyncSession, owner_id: str, task_id: UUID
         record = await _get_progress_record(session, task.id, receipt.record_id)
         return {**await snapshot(session, owner_id), 'record': ProgressRecordOut.model_validate(record)}
 
+    require_active(task)
     if task.course_items is not None:
         raise HTTPException(422, 'Course progress is recorded through its checklist')
     day = today()
@@ -474,6 +492,7 @@ async def update_record(session: AsyncSession, owner_id: str, task_id: UUID, rec
                         body: ProgressRecordPatch) -> dict:
     await snapshot(session, owner_id)
     task = await get_task(session, owner_id, task_id)
+    require_active(task)
     record = await _get_progress_record(session, task.id, record_id)
     if record.deleted_at is not None:
         raise HTTPException(409, 'A revoked record cannot be edited')
@@ -488,6 +507,7 @@ async def update_record(session: AsyncSession, owner_id: str, task_id: UUID, rec
 async def revoke_record(session: AsyncSession, owner_id: str, task_id: UUID, record_id: UUID) -> dict:
     await snapshot(session, owner_id)
     task = await get_task(session, owner_id, task_id)
+    require_active(task)
     record = await _get_progress_record(session, task.id, record_id)
     if record.deleted_at is None:
         record.deleted_at = utcnow()
@@ -500,6 +520,7 @@ async def revoke_record(session: AsyncSession, owner_id: str, task_id: UUID, rec
 async def set_course(session: AsyncSession, owner_id: str, task_id: UUID, body: CourseUpdate) -> dict:
     await snapshot(session, owner_id)
     task = await get_task(session, owner_id, task_id)
+    require_active(task)
     if task.course_items is None:
         raise HTTPException(422, 'This task is not a course')
     if any(index < 0 or index >= len(task.course_items) for index in body.indices):
@@ -521,7 +542,7 @@ async def set_course(session: AsyncSession, owner_id: str, task_id: UUID, body: 
 
 async def reorder_tasks(session: AsyncSession, owner_id: str, ids: list[UUID]) -> dict:
     await snapshot(session, owner_id)
-    tasks = [task for task in await _tasks(session, owner_id) if not task.is_done]
+    tasks = [task for task in await _tasks(session, owner_id) if not task.is_done and task.archived_at is None]
     if set(ids) != {task.id for task in tasks}:
         raise HTTPException(422, 'Ordering must contain every unfinished task exactly once')
     task_map = {task.id: task for task in tasks}
@@ -540,6 +561,33 @@ async def delete_task(session: AsyncSession, owner_id: str, task_id: UUID) -> di
     token = task.undo_token
     await session.flush()
     return {**await snapshot(session, owner_id), 'undo_token': token}
+
+
+async def archive_task(session: AsyncSession, owner_id: str, task_id: UUID, restore: bool = False) -> dict:
+    await snapshot(session, owner_id)
+    task = await get_task(session, owner_id, task_id)
+    if restore:
+        if task.archived_at is not None:
+            for row in task.archive_periods:
+                if row.ends_on is None:
+                    row.ends_on = max(row.starts_on, today())
+            task.archived_at = None
+    elif task.archived_at is None:
+        active_focus = await session.scalar(select(FocusSession.id).where(
+            FocusSession.owner_id == owner_id, FocusSession.task_id == task.id,
+            FocusSession.phase == 'focus', FocusSession.active_slot == 1,
+            FocusSession.settled_at.is_(None)))
+        if active_focus is not None:
+            raise HTTPException(409, '请先结束并确认这轮专注，再归档任务')
+        starts_on = today() + timedelta(days=1)
+        interval = next((row for row in task.archive_periods if row.starts_on == starts_on), None)
+        if interval is None:
+            task.archive_periods.append(TaskArchivePeriod(task_id=task.id, starts_on=starts_on))
+        else:
+            interval.ends_on = None
+        task.archived_at = utcnow()
+    await session.flush()
+    return await snapshot(session, owner_id)
 
 
 async def undo_task(session: AsyncSession, owner_id: str, token: str) -> dict:
