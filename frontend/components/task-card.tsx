@@ -131,13 +131,13 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
 
         {isCourse ? <div className="compact-course-progress">
           <div className="compact-course-meter">
-            <TaskProgress label="学习进度" ariaLabel={`${task.name}课程进度`} value={task.progress} maximum={task.target} unit="节" met={task.is_done} effect={progressEffect} />
+            <TaskProgress label="学习进度" ariaLabel={`${task.name}课程进度`} value={task.progress} maximum={task.target} unit="节" met={task.is_done} effect={progressEffect} texture="honeycomb" />
           </div>
           {focusAction && !task.is_done && <button type="button" className="compact-history-button" disabled={busy} aria-label={`${task.name}开始专注`} title="开始专注" onClick={() => onStartFocus(task.id)}><Timer size={17} /></button>}
           <button type="button" className="compact-course-open" data-course-trigger={task.id} aria-label={`${task.name}${task.is_done ? '查看课程' : '继续学习'}`} onClick={() => onOpenCourse(task.id)}>{task.is_done ? '查看课程' : '继续学习'}<ArrowRight size={16} /></button>
         </div> : <div className={`compact-quick-progress ${task.is_done ? 'is-readonly' : ''}`}>
           <div className="compact-course-meter">
-            <TaskProgress label={meterCaption} ariaLabel={`${task.name}${useDailyMeter ? '今日' : '总'}进度`} value={meterCurrent} displayValue={useDailyMeter ? todayAmount : meterCurrent} maximum={meterMaximum} unit={isDaily && !isPlan && !useDailyMeter ? '天' : task.unit} minimum={useDailyMeter ? dailyMinimum : 0} met={!task.plan_expired && (useDailyMeter ? task.daily_done : task.is_done)} pending={saving} failed={feedback?.phase === 'failed'} effect={progressEffect} daily={useDailyMeter} />
+            <TaskProgress label={meterCaption} ariaLabel={`${task.name}${useDailyMeter ? '今日' : '总'}进度`} value={meterCurrent} displayValue={useDailyMeter ? todayAmount : meterCurrent} maximum={meterMaximum} unit={isDaily && !isPlan && !useDailyMeter ? '天' : task.unit} minimum={useDailyMeter ? dailyMinimum : 0} met={!task.plan_expired && (useDailyMeter ? task.daily_done : task.is_done)} pending={saving} failed={feedback?.phase === 'failed'} effect={progressEffect} daily={useDailyMeter} texture={isDaily || isPlan ? 'leaf' : 'woven'} />
           </div>
           <div className="compact-quick-actions">
             {!task.is_done && <div className="compact-stepper" role="group" aria-label={`${task.name}调整进度`}>

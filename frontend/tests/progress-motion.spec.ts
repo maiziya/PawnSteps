@@ -27,33 +27,41 @@ test('confirmed steps animate new work; decrement has distinct feedback and relo
   await expect(meter).toHaveAttribute('data-feedback', 'step');
   await expect(meter.getByRole('status')).toHaveText('+5 页');
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '5');
-  await expect(meter.locator('.task-progress-tile.is-filled')).toHaveCount(5);
-  await expect(meter.locator('[data-change="increase"]')).toHaveCount(5);
-  expect(await meter.locator('.task-progress-fill').first().evaluate(el => getComputedStyle(el).transitionDuration)).toContain('0.38s');
+  await expect.poll(async () => {
+    const fill = (await meter.locator('.task-progress-fill').boundingBox())!;
+    const track = (await meter.locator('.task-progress-track').boundingBox())!;
+    return fill.width / track.width;
+  }).toBeCloseTo(.25, 2);
+  await expect(meter.locator('[data-change="increase"]')).toHaveCount(1);
+  expect(await meter.locator('.task-progress-fill').evaluate(el => getComputedStyle(el).transitionDuration)).toContain('0.6s');
   await page.screenshot({ path: testInfo.outputPath('step-confirmed.png') });
   await step(page, task, -1);
   await expect(meter).toHaveAttribute('data-feedback', 'decrement');
   await expect(meter.getByRole('status')).toHaveText('−1 页');
-  await expect(meter.locator('.task-progress-trail.is-decrement')).toHaveCount(1);
+  await expect(meter.locator('.task-progress-change.is-decrement')).toHaveCount(1);
   expect((await persistedState(page)).tasks[0].progress).toBe(4);
   await page.reload();
   await expect(meter).toHaveAttribute('data-feedback', 'idle');
   await expect(meter.getByRole('status')).toHaveCount(0);
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '4');
-  await expect(meter.locator('.task-progress-trail')).toHaveCount(0);
+  await expect(meter.locator('.task-progress-change')).toHaveCount(0);
 });
 
-test('large goals use proportional partial cells and changing viewport never creates extra progress', async ({ page }) => {
+test('patterned progress stays proportional across screens and pointer actions never record progress', async ({ page }) => {
   const task = await seed(page, { target: 50 });
   const card = taskCard(page, task.name), meter = card.locator('.task-progress');
-  await expect(meter).toHaveAttribute('data-design', 'steps');
-  await expect(meter.locator('.task-progress-tile')).toHaveCount(20);
+  await expect(meter).toHaveAttribute('data-design', 'pattern');
   await step(page, task, 1);
-  await expect(meter.locator('.task-progress-tile').first()).toHaveAttribute('data-fill', '40');
-  await expect(meter.locator('.task-progress-tile.is-filled')).toHaveCount(0);
+  await expect(meter.locator('.task-progress-fill')).toHaveAttribute('style', 'width: 2%;');
   await page.setViewportSize({ width: 375, height: 812 });
-  await expect(meter.locator('.task-progress-tile')).toHaveCount(10);
-  await expect(meter.locator('.task-progress-tile').first()).toHaveAttribute('data-fill', '20');
+  await expect(meter.locator('.task-progress-fill')).toHaveAttribute('style', 'width: 2%;');
+  const rail = card.getByRole('progressbar');
+  await rail.click({ position: { x: 80, y: 8 } });
+  const box = (await rail.boundingBox())!;
+  await page.mouse.move(box.x + 15, box.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 10, box.y + 8, { steps: 4 });
+  await page.mouse.up();
   await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
   expect((await persistedState(page)).tasks[0].record_count).toBe(1);
 });
