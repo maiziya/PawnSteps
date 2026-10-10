@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, CalendarRange, ChartNoAxesCombined, Check, Circle, ChevronLeft, ChevronRight, Flame, List, Moon, RefreshCw } from "lucide-react";
 import { api, ownerIdentity } from "@/lib/api";
 import { shiftDate, shortDate, weekStart } from "@/lib/review-types";
 import { useAppStore } from "@/lib/store";
-import type { HistoryEntry, HistoryResponse } from "@/lib/types";
+import type { HistoryEntry, HistoryResponse, Task } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import "./collections.css";
 import "./calendar-week.css";
@@ -25,7 +25,8 @@ function weekLabel(first: string, last: string) {
 
 type ActivityStatus = 'recorded' | 'partial' | 'met' | 'exceeded';
 type CalendarView = 'calendar' | 'week' | 'list';
-interface HistoryState { key: string; data: HistoryResponse | null; loading: boolean; error: string }
+interface HistoryState { key: string; data: HistoryResponse | null; loading: boolean; error: string; tasks: Task[]; day: string }
+interface HistoryCache { owner: string; tasks: Task[]; day: string; entries: Map<string, HistoryResponse> }
 function activityStatus(entry: HistoryEntry): ActivityStatus {
   if (!entry.quota || entry.quota <= 0) return 'recorded';
   if (entry.amount < entry.quota) return 'partial';
@@ -74,20 +75,37 @@ export function CalendarPanel({ onReview }: { onReview: () => void }) {
   const currentDay = serverToday || dateKey(new Date());
   const owner = typeof window === 'undefined' ? '' : ownerIdentity();
   const previousToday = useRef(currentDay);
-  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const content = useRef<HTMLDivElement>(null);
+  const [contentHeight, setContentHeight] = useState(0);
   const [monthKey, setMonthKey] = useState(() => currentDay.slice(0, 7));
   const [selectedDay, setSelectedDay] = useState(currentDay);
   const [view, setView] = useState<CalendarView>('calendar');
-  const [request, setRequest] = useState<HistoryState>({ key: '', data: null, loading: true, error: '' });
+  const [request, setRequest] = useState<HistoryState>(() => ({ key: '', data: null, loading: true, error: '', tasks, day: currentDay }));
+  const [cache, setCache] = useState<HistoryCache>(() => ({ owner: '', tasks: [], day: '', entries: new Map() }));
+  const [expandedPreviews, setExpandedPreviews] = useState<{ key: string; days: string[] }>({ key: '', days: [] });
   const [retry, setRetry] = useState(0);
   const firstWeekDay = weekStart(selectedDay), lastWeekDay = shiftDate(firstWeekDay, 6);
   const periodQuery = view === 'week' ? `week_of=${firstWeekDay}` : `month=${monthKey}`;
   const requestKey = `${owner}:${periodQuery}`;
-  const shown = request.key === requestKey ? request : null;
-  const loading = !shown || shown.loading;
+  const cached = cache.owner === owner && cache.tasks === tasks && cache.day === currentDay ? cache.entries.get(requestKey) : undefined;
+  const shown = request.key === requestKey && request.tasks === tasks && request.day === currentDay ? request : null;
+  const data = shown?.data || cached;
+  const loading = !data && (!shown || shown.loading);
   const error = shown?.error || '';
-  const history = shown?.data?.history;
-  const restDays = useMemo(() => new Set(shown?.data?.rest_dates || []), [shown?.data]);
+  const history = data?.history;
+  const restDays = useMemo(() => new Set(data?.rest_dates || []), [data]);
+
+  useLayoutEffect(() => {
+    const node = content.current;
+    if (!node || loading) return;
+    const measure = () => setContentHeight(node.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [loading, view]);
+
+  useEffect(() => { setExpandedPreviews({ key: requestKey, days: [] }); }, [requestKey]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -107,18 +125,33 @@ export function CalendarPanel({ onReview }: { onReview: () => void }) {
   }, [currentDay, selectedDay]);
 
   useEffect(() => {
+    if (cached) {
+      setRequest({ key: requestKey, data: cached, loading: false, error: '', tasks, day: currentDay });
+      return;
+    }
     const controller = new AbortController();
     const capturedOwner = owner;
-    setRequest({ key: requestKey, data: null, loading: true, error: '' });
+    const valid = () => {
+      const live = useAppStore.getState();
+      return !controller.signal.aborted && capturedOwner === ownerIdentity() && tasks === live.tasks && (!live.today || currentDay === live.today);
+    };
+    setRequest({ key: requestKey, data: null, loading: true, error: '', tasks, day: currentDay });
     api<HistoryResponse>(`/history?${periodQuery}`, { signal: controller.signal })
       .then(data => {
-        if (!controller.signal.aborted && capturedOwner === ownerIdentity()) setRequest({ key: requestKey, data, loading: false, error: '' });
+        if (!valid()) return;
+        setCache(previous => {
+          const entries = previous.owner === capturedOwner && previous.tasks === tasks && previous.day === currentDay ? new Map(previous.entries) : new Map<string, HistoryResponse>();
+          entries.set(requestKey, data);
+          if (entries.size > 8) entries.delete(entries.keys().next().value!);
+          return { owner: capturedOwner, tasks, day: currentDay, entries };
+        });
+        setRequest({ key: requestKey, data, loading: false, error: '', tasks, day: currentDay });
       })
       .catch(reason => {
-        if (!controller.signal.aborted && capturedOwner === ownerIdentity()) setRequest({ key: requestKey, data: null, loading: false, error: reason instanceof Error ? reason.message : "打卡记录暂时无法加载" });
+        if (valid()) setRequest({ key: requestKey, data: null, loading: false, error: reason instanceof Error ? reason.message : "打卡记录暂时无法加载", tasks, day: currentDay });
       });
     return () => controller.abort();
-  }, [requestKey, periodQuery, owner, currentDay, tasks, userId, retry]);
+  }, [requestKey, periodQuery, owner, currentDay, tasks, userId, retry, cached]);
 
   const byDay = useMemo(() => {
     const result: Record<string, HistoryEntry[]> = {};
@@ -157,9 +190,12 @@ export function CalendarPanel({ onReview }: { onReview: () => void }) {
   function dayAriaLabel(day: string, entries: HistoryEntry[]) {
     return `${dateLabel(day)}，${loading ? '正在加载记录' : error ? '记录暂未加载' : entries.length ? `${entries.length} 项任务有进度，${statusLabels[dayStatus(entries)]}` : restDays.has(day) ? '休息日' : day > currentDay ? '尚未到来' : '暂无任务进度'}`;
   }
-  function showAll(day: string) {
+  function togglePreview(day: string) {
     chooseDay(day);
-    requestAnimationFrame(() => detailHeading.current?.focus());
+    setExpandedPreviews(previous => {
+      const days = previous.key === requestKey ? previous.days : [];
+      return { key: requestKey, days: days.includes(day) ? days.filter(value => value !== day) : [...days, day] };
+    });
   }
   const detailBody = loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p>
     : error ? <p className="calendar-detail-empty muted">记录暂未加载，请重试</p>
@@ -183,10 +219,12 @@ export function CalendarPanel({ onReview }: { onReview: () => void }) {
     </div>
     {error && <div className="calendar-error" role="alert"><span>{error}</span><Button variant="outline" size="sm" onClick={() => setRetry(value => value + 1)}><RefreshCw size={15} />重试</Button></div>}
     <div className="calendar-summary-row"><div className="calendar-month-summary" aria-live="polite">{loading ? "正在加载记录" : error ? '记录暂时不可用' : <><span>{view === 'week' ? '本周' : '本月'} <strong>{recordedDays.length}</strong> 天有进度</span><span>共 <strong>{Object.values(byDay).reduce((sum, entries) => sum + entries.length, 0)}</strong> 项记录</span></>}</div><div className="calendar-streak"><Flame size={16} aria-hidden="true" /><span>连续 <strong>{streak}</strong> 天</span></div></div>
+    <div ref={content} className="calendar-content" style={loading && contentHeight ? { minHeight: contentHeight } : undefined}>
     {view === 'week' ? <div className="calendar-week-layout" aria-busy={loading}>
       <div className="calendar-week-grid" role="group" aria-label="一周打卡记录">
         {weekDates.map((day, index) => {
           const entries = byDay[day] || [], status = dayStatus(entries);
+          const expanded = expandedPreviews.key === requestKey && expandedPreviews.days.includes(day);
           return <section key={day} data-date={day} className={`calendar-week-day ${day === currentDay ? 'is-today' : ''} ${day === selectedDay ? 'is-selected' : ''} ${day > currentDay ? 'is-future' : ''} ${entries.length ? `has-records activity-${status}` : restDays.has(day) ? 'is-rest' : ''}`}>
             <button type="button" className="calendar-week-date" aria-label={dayAriaLabel(day, entries)} aria-pressed={day === selectedDay} aria-current={day === currentDay ? 'date' : undefined} onClick={() => chooseDay(day)}>
               <span>周{weekDays[index]}</span><strong>{calendarDate(day).getUTCMonth() + 1}/{calendarDate(day).getUTCDate()}</strong>
@@ -194,14 +232,14 @@ export function CalendarPanel({ onReview }: { onReview: () => void }) {
             </button>
             <div className="calendar-week-preview">
               <p className="calendar-week-day-summary">{loading ? '加载中' : error ? '暂未加载' : entries.length ? `${entries.length} 项记录` : emptyDayLabel(day)}</p>
-              {entries.length > 0 && <ul className="calendar-week-entries">{entries.slice(0, 3).map(entry => <li key={entry.task_id} className={`activity-${activityStatus(entry)}`}><strong title={entry.task_name}>{entry.task_name}</strong><div className="calendar-week-preview-progress"><span>{entry.amount}{entry.quota && entry.quota > 0 ? ` / ${entry.quota}` : ''} {entry.unit}</span><small>{statusLabels[activityStatus(entry)]}{activityStatus(entry) === 'exceeded' ? ` +${entry.amount - entry.quota!}` : ''}</small></div></li>)}</ul>}
-              {entries.length > 3 && <button type="button" className="calendar-week-more" onClick={() => showAll(day)}>查看全部 {entries.length} 项</button>}
+              {entries.length > 0 && <ul id={`calendar-week-records-${day}`} className="calendar-week-entries">{(expanded ? entries : entries.slice(0, 3)).map(entry => <li key={entry.task_id} className={`activity-${activityStatus(entry)}`}><strong title={entry.task_name}>{entry.task_name}</strong><div className="calendar-week-preview-progress"><span>{entry.amount}{entry.quota && entry.quota > 0 ? ` / ${entry.quota}` : ''} {entry.unit}</span><small>{statusLabels[activityStatus(entry)]}{activityStatus(entry) === 'exceeded' ? ` +${entry.amount - entry.quota!}` : ''}</small></div></li>)}</ul>}
+              {entries.length > 3 && <button type="button" className="calendar-week-more" aria-expanded={expanded} aria-controls={`calendar-week-records-${day}`} onClick={() => togglePreview(day)}>{expanded ? '收起' : `查看全部 ${entries.length} 项`}</button>}
             </div>
           </section>;
         })}
       </div>
       <ActivityLegend />
-      <aside className="calendar-week-detail calendar-day-detail panel"><div className="calendar-detail-heading"><h3 ref={detailHeading} tabIndex={-1}>{dateLabel(selectedDay)}</h3><span>{selectedEntries.length ? `${selectedEntries.length} 项记录` : ''}</span></div>{detailBody}</aside>
+      <aside className="calendar-week-detail calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3><span>{selectedEntries.length ? `${selectedEntries.length} 项记录` : ''}</span></div>{detailBody}</aside>
     </div> : view === 'calendar' ? <div className="calendar-layout" data-weeks={days.length / 7} aria-busy={loading}>
       <div className={`calendar-sheet panel ${loading ? "calendar-loading" : ""}`}>
         <table className="calendar-table"><caption className="sr-only">{year} 年 {month} 月打卡记录</caption><thead><tr>{weekDays.map(day => <th scope="col" key={day}>周{day}</th>)}</tr></thead><tbody>
@@ -214,5 +252,6 @@ export function CalendarPanel({ onReview }: { onReview: () => void }) {
       </div>
       <aside className="calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3></div>{detailBody}</aside>
     </div> : <div className="calendar-list-panel panel" aria-busy={loading}>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : error ? <p className="calendar-detail-empty muted">记录暂未加载，请重试</p> : recordedDays.length ? recordedDays.map(day => <section className="calendar-list-day" key={day}><button type="button" className="calendar-list-date" onClick={() => { chooseDay(day); changeView('calendar'); }}><strong>{calendarDate(day).getUTCDate()}</strong><span>{calendarDate(day).toLocaleDateString("zh-CN", { timeZone: 'UTC', weekday: "long" })}</span><small>{byDay[day].length} 项任务</small></button><ul className="calendar-completed-list">{byDay[day].map(entry => <ActivityRow key={entry.task_id} entry={entry} />)}</ul></section>) : <div className="calendar-detail-empty"><CalendarDays size={38} strokeWidth={1.2} /><h3>这个月的故事，等你来写</h3><p className="muted">记录一次任务进度，就会出现在这里。</p></div>}</div>}
+    </div>
   </section>;
 }

@@ -51,6 +51,75 @@ function entry(date: string, taskName: string, amount: number, quota: number | n
   };
 }
 
+test('each weekly preview expands in place and can collapse independently', async ({ page }) => {
+  await openWorkspace(page);
+  const state = await persistedState(page), firstDay = shiftDate(monday(state.today), -7), secondDay = shiftDate(firstDay, 1);
+  const entries = [
+    ...Array.from({ length: 7 }, (_, index) => entry(firstDay, `第一天记录${index + 1}`, index + 1, 5)),
+    ...Array.from({ length: 4 }, (_, index) => entry(secondDay, `第二天记录${index + 1}`, index + 11, 5)),
+  ];
+  await page.route('**/api/history?*', async route => {
+    const url = new URL(route.request().url()), requested = url.searchParams.get('week_of');
+    const start = requested ? monday(requested) : `${url.searchParams.get('month')}-01`;
+    const end = requested ? shiftDate(start, 6) : `${url.searchParams.get('month')}-31`;
+    await route.fulfill({ json: { history: entries.filter(item => item.date >= start && item.date <= end), rest_dates: [], streak: 0 } });
+  });
+  await showWeek(page); await page.getByRole('button', { name: '上一周', exact: true }).click();
+  const first = page.locator(`.calendar-week-day[data-date="${firstDay}"]`), second = page.locator(`.calendar-week-day[data-date="${secondDay}"]`);
+  await expect(first.locator('.calendar-week-entries > li')).toHaveCount(3);
+  const more = first.getByRole('button', { name: '查看全部 7 项', exact: true });
+  await more.focus(); await page.keyboard.press('Enter');
+  await expect(first.locator('.calendar-week-entries > li')).toHaveCount(7, { timeout: 2000 });
+  await expect(first.getByRole('button', { name: '收起', exact: true })).toBeFocused();
+  await expect(second.locator('.calendar-week-entries > li')).toHaveCount(3);
+  await second.getByRole('button', { name: '查看全部 4 项', exact: true }).click();
+  await expect(second.locator('.calendar-week-entries > li')).toHaveCount(4);
+  await expect(first.locator('.calendar-week-entries > li')).toHaveCount(7);
+  await first.getByRole('button', { name: '收起', exact: true }).click();
+  await expect(first.locator('.calendar-week-entries > li')).toHaveCount(3);
+  await expect(second.locator('.calendar-week-entries > li')).toHaveCount(4);
+  await page.getByRole('button', { name: '下一周', exact: true }).click();
+  await page.getByRole('button', { name: '上一周', exact: true }).click();
+  await expect(first.locator('.calendar-week-entries > li')).toHaveCount(3);
+  await expect(second.locator('.calendar-week-entries > li')).toHaveCount(3);
+});
+
+test('calendar view switches keep controls stable and retain frame height while loading', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 768 }); await openWorkspace(page);
+  const state = await persistedState(page), entries = Array.from({ length: 30 }, (_, index) => entry(state.today, `当天记录${index + 1}`, index + 1, 5));
+  let release!: () => void, started!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; }), seen = new Promise<void>(resolve => { started = resolve; });
+  await page.route('**/api/history?*', async route => {
+    if (new URL(route.request().url()).searchParams.has('week_of')) { started(); await gate; }
+    await route.fulfill({ json: { history: entries, rest_dates: [], streak: 0 } });
+  });
+  await navigate(page, '打卡日历');
+  await expect(page.locator('.calendar-day-detail .calendar-completed-list > li')).toHaveCount(30);
+  const before = (await page.locator('.calendar-panel').boundingBox())!, controls = (await page.locator('.calendar-view-toggle').boundingBox())!;
+  try {
+    await page.getByRole('button', { name: '周', exact: true }).click(); await seen;
+    const waiting = (await page.locator('.calendar-panel').boundingBox())!, nextControls = (await page.locator('.calendar-view-toggle').boundingBox())!;
+    expect.soft(Math.abs(nextControls.y - controls.y), 'Switching modes must not move the view controls').toBeLessThanOrEqual(1);
+    expect.soft(waiting.height, 'A loading placeholder must not collapse the preceding calendar frame').toBeGreaterThanOrEqual(before.height - 1);
+  } finally { release(); }
+  await expect(page.locator('.calendar-week-detail .calendar-completed-list > li')).toHaveCount(30);
+});
+
+test('returning to a loaded calendar range reuses its records without a loading flash', async ({ page }) => {
+  await openWorkspace(page); const state = await persistedState(page);
+  let requests = 0;
+  await page.route('**/api/history?*', async route => {
+    requests++;
+    await route.fulfill({ json: { history: [entry(state.today, '切换保留的记录', 1, 5)], rest_dates: [], streak: 0 } });
+  });
+  await navigate(page, '打卡日历'); await expect(page.locator('.calendar-day-detail')).toContainText('切换保留的记录');
+  await page.getByRole('button', { name: '周', exact: true }).click(); await expect(page.locator('.calendar-week-detail')).toContainText('切换保留的记录');
+  await page.getByRole('button', { name: '月历', exact: true }).click(); await expect(page.locator('.calendar-day-detail')).toContainText('切换保留的记录');
+  await page.getByRole('button', { name: '列表', exact: true }).click(); await expect(page.locator('.calendar-list-panel')).toContainText('切换保留的记录');
+  await page.getByRole('button', { name: '周', exact: true }).click(); await expect(page.locator('.calendar-week-detail')).toContainText('切换保留的记录');
+  expect(requests).toBe(2);
+});
+
 test('weekly calendar reflects real ordinary and daily records, including corrections', async ({ page }, testInfo) => {
   await openWorkspace(page);
   const headers = await identity(page);

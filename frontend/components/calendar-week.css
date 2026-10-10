@@ -1,4 +1,6 @@
 .calendar-toolbar { flex-wrap: wrap; }
+.calendar-month-nav { min-height: 48px; }
+:root:has(.calendar-panel) { scrollbar-gutter: stable; }
 .calendar-week-nav { min-width: 0; }
 .calendar-week-nav h2 { display: flex; flex-direction: column; gap: 2px; font-size: 18px; }
 .calendar-week-year { color: var(--muted); font-size: 11px; font-weight: 400; }
@@ -40,6 +42,7 @@
 .collections-panel .calendar-week-date:focus-visible { outline-offset: -3px; }
 
 @media (max-width: 1100px) {
+  .calendar-toolbar { flex-direction: column; align-items: stretch; }
   .calendar-view-toggle { margin-left: auto; }
   .calendar-week-preview { display: none; }
   .calendar-week-date { border-bottom: 0; }
