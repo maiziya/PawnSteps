@@ -111,9 +111,9 @@
 .calendar-entry-name { display: block; min-width: 0; padding-top: 1px; font-size: 14px; line-height: 22px; font-weight: 500; overflow-wrap: anywhere; }
 .calendar-entry-progress { min-width: 0; max-width: 180px; text-align: right; }
 .calendar-entry-quantity { display: block; color: var(--text); font-size: 14px; line-height: 24px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.calendar-entry-status { display: grid; grid-template-columns: 4em minmax(0,1fr); align-items: baseline; gap: 6px; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.calendar-entry-status { display: grid; grid-template-columns: max-content minmax(0,1fr); align-items: baseline; gap: 4px; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
 .calendar-status-label { text-align: left; white-space: nowrap; }
-.calendar-status-difference { min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.calendar-status-difference { min-width: 0; text-align: left; font-variant-numeric: tabular-nums; }
 .calendar-entry-status.activity-partial { color: var(--accent); }
 .calendar-entry-status.activity-met, .calendar-entry-status.activity-exceeded { color: var(--success); }
 .calendar-complete-check.activity-recorded, .calendar-complete-check.activity-partial { color: var(--accent); background: var(--accent-soft); }
