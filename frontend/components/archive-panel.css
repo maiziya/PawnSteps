@@ -1,0 +1,31 @@
+.archive-caption { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 3px 2px 14px; color: var(--muted); font-size: 12px; }
+.archive-caption>span { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.archive-list { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--surface); }
+.archive-row { display: flex; align-items: center; gap: 24px; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+.archive-row:last-child { border-bottom: 0; }
+.archive-row-content { flex: 1; min-width: 0; }
+.archive-row h3 { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.archive-row-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.archive-row-meta .archive-complete { color: var(--success); }
+.archive-progress { display: flex; align-items: center; gap: 12px; max-width: 360px; margin-top: 7px; }
+.archive-progress>div { flex: 1; min-width: 24px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.archive-progress>div>span { display: block; height: 100%; background: var(--success); }
+.archive-progress>span { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.archive-row-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.archive-restore { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--accent); font-size: 12px; }
+.archive-restore:hover { background: var(--accent-soft); }
+.archive-empty { padding: 44px 20px; text-align: center; color: var(--muted); }
+.archive-empty>svg { margin: 0 auto 14px; }
+.archive-empty h3 { font-size: 15px; color: var(--text); font-weight: 500; }
+.archive-empty p { margin-top: 8px; font-size: 12px; }
+.archive-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 10px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.archive-pagination>span:first-child { margin-right: auto; }
+@media (max-width: 767px) {
+  .archive-caption { display: block; padding-bottom: 12px; }
+  .archive-caption p { margin-top: 4px; padding-left: 24px; }
+  .archive-row { align-items: center; gap: 12px; padding: 12px; }
+  .archive-row-content { flex: 1; min-width: 0; }
+  .archive-row-actions { display: grid; grid-template-columns: 44px 44px; gap: 0; }
+  .archive-row-actions .icon-button { width: 44px; height: 44px; }
+  .archive-restore { grid-column: span 2; min-height: 44px; padding: 0 12px; margin-bottom: 2px; }
+}

@@ -182,3 +182,11 @@ html { scroll-padding-top: 124px; }
 
 .course-daily-summary { margin-left: auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .course-daily-summary.is-met { color: var(--success); }
+
+.task-filter-label-short { display: none; }
+@media (max-width: 767px) {
+  .task-filter-label-long { display: none; }
+  .task-filter-label-short { display: inline; }
+  .filter-tabs button { padding: 0 9px; }
+}
+@media (max-width: 360px) { .filter-tabs button { padding: 0 6px; } }

@@ -15,6 +15,7 @@ import type { Task } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { ArchivePanel } from "@/components/archive-panel";
 import { TaskCard } from "@/components/task-card";
 import { TaskForm, type TaskKind } from "@/components/task-form";
 import { CourseItems } from "@/components/course-items";
@@ -40,7 +41,7 @@ type View = typeof navigation[number]["id"];
 const taskDragModifiers: Modifiers = [({ transform }) => ({ ...transform, x: 0 })];
 
 export function Dashboard() {
-  const { tasks, rewards, stats, user, timezone, todayPlan, loading, busy, error, dark, muted, unlocked, quickFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
+  const { tasks, archivedTasks, rewards, stats, user, timezone, todayPlan, loading, busy, error, dark, muted, unlocked, quickFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
   const [view, setView] = useState<View>("tasks");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -97,7 +98,7 @@ export function Dashboard() {
 
   useEffect(() => { if (query.trim()) setShowRest(true); }, [query]);
 
-  const hasTasks = tasks.length > 0;
+  const hasTasks = tasks.length > 0 || archivedTasks.length > 0;
   const planIds = pendingPlanOrder?.date === todayPlan.date ? pendingPlanOrder.ids : todayPlan.task_ids;
   const planPositions = new Map(planIds.map((id, index) => [id, index]));
   const visible = tasks.filter(task => task.name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || (filter === "today" && planPositions.has(task.id)) || (filter === "daily" && (task.daily_quota > 0 || task.daily_minimum > 0 || task.daily_plan !== null)) || (filter === "course" && task.course_items !== null) || (filter === "done" && task.is_done)));
@@ -114,7 +115,7 @@ export function Dashboard() {
   const done = visible.filter(task => task.is_done && !quickHolds.has(task.id)).sort((a, b) => filter === "today" ? (planPositions.get(a.id) ?? 0) - (planPositions.get(b.id) ?? 0) : 0);
   const completedExpanded = showCompleted || filter === "done";
   const nextMilestone = rewards.filter(reward => reward.streak_target !== null && reward.streak_target > stats.streak).sort((a, b) => a.streak_target! - b.streak_target!)[0];
-  const course = tasks.find(task => task.id === courseId && task.course_items !== null);
+  const course = [...tasks, ...archivedTasks].find(task => task.id === courseId && task.course_items !== null);
   const newTask = (kind: TaskKind = "normal") => { setEditing(null); setInitialKind(kind); setFilter("all"); history.replaceState(null, "", "#tasks"); setQuery(""); setFormOpen(true); };
   const editTask = (task: Task) => { setEditing(task); setFormOpen(true); };
   const openCourse = (id: string) => {
@@ -256,9 +257,10 @@ export function Dashboard() {
               <button onClick={() => changeView("rewards")} aria-label="查看下个里程碑"><Gift size={17} /><span>{nextMilestone ? "下个里程碑" : "我的奖励"}<strong>{nextMilestone ? `${nextMilestone.streak_target} 天` : "查看成就"}{nextMilestone && <small className="milestone-distance">还差 {nextMilestone.streak_target! - stats.streak} 天</small>}</strong></span><ArrowRight size={15} className="summary-arrow" /></button>
             </section>
             <section className="task-section" aria-label="任务列表">
-              <div className="task-toolbar"><div className="filter-tabs" role="group" aria-label="筛选任务">{[["all", "全部"], ["today", "今日"], ["daily", "每日打卡"], ["course", "课程学习"], ["done", "已完成"]].map(([id, title]) => <button key={id} aria-label={id === "today" ? "今日计划" : title} aria-pressed={filter === id} onClick={() => chooseFilter(id)} className={filter === id ? "selected" : ""}>{title}</button>)}</div><button className="day-plan-adjust" aria-label="调整今日计划" title="调整今日计划" disabled={busy} onClick={() => setPlanPickerOpen(true)}><CalendarCheck2 size={17} /><span>{filter === "today" ? "调整计划" : "安排今天"}</span></button></div>
+              <div className="task-toolbar"><div className="filter-tabs" role="group" aria-label="筛选任务">{[["all", "全部"], ["today", "今日"], ["daily", "每日打卡"], ["course", "课程学习"], ["done", "已完成"], ["archive", "归档"]].map(([id, title]) => <button key={id} aria-label={id === "today" ? "今日计划" : id === "archive" ? "归档任务" : title} aria-pressed={filter === id} onClick={() => chooseFilter(id)} className={filter === id ? "selected" : ""}><span className="task-filter-label-long">{title}</span><span className="task-filter-label-short">{id === "daily" ? "打卡" : id === "course" ? "课程" : title}</span></button>)}</div><button className="day-plan-adjust" aria-label="调整今日计划" title="调整今日计划" disabled={busy} onClick={() => setPlanPickerOpen(true)}><CalendarCheck2 size={17} /><span>{filter === "today" ? "调整计划" : "安排今天"}</span></button></div>
+              {filter === "archive" ? <ArchivePanel query={query} onOpenRecords={setRecordTaskId} onOpenCourse={openCourse} onRestored={task => { setQuery(""); chooseFilter(task.is_done ? "done" : "all"); }} /> : <>
               {filter === "today" && todayPlan.task_ids.length > 0 && <div className="today-plan-caption"><strong>今天最重要的 {todayPlan.task_ids.length} 项</strong><span>最多选 3 项 · 进度沿用原任务</span></div>}
-              {filter === "today" && !todayPlan.task_ids.length ? <div className="today-plan-empty"><CalendarCheck2 size={27} /><h2>今天，先做好几件重要的事</h2><p>从已有任务中挑选 1–3 项，给今天一个清晰的方向。</p><Button variant="secondary" onClick={() => setPlanPickerOpen(true)}>选择今日任务<ArrowRight size={16} /></Button></div> : !visible.length && <div className="empty-state"><span className="empty-symbol"><Search size={25} /></span><h2>这里暂时没有匹配的任务</h2><p>换个关键词，或者看看其他分类。</p><Button variant="secondary" onClick={() => { setQuery(""); chooseFilter("all"); }}>查看全部任务<ArrowRight size={16} /></Button></div>}
+              {filter === "today" && !todayPlan.task_ids.length ? <div className="today-plan-empty"><CalendarCheck2 size={27} /><h2>今天，先做好几件重要的事</h2><p>从已有任务中挑选 1–3 项，给今天一个清晰的方向。</p><Button variant="secondary" onClick={() => setPlanPickerOpen(true)}>选择今日任务<ArrowRight size={16} /></Button></div> : !visible.length && <div className="empty-state"><span className="empty-symbol"><Search size={25} /></span><h2>{!tasks.length ? "任务已收起，积累仍在" : "这里暂时没有匹配的任务"}</h2><p>{!tasks.length ? "可以创建新的目标，或从归档中恢复任务。" : "换个关键词，或者看看其他分类。"}</p><Button variant="secondary" onClick={() => { setQuery(""); chooseFilter(!tasks.length ? "archive" : "all"); }}>{!tasks.length ? "查看归档" : "查看全部任务"}<ArrowRight size={16} /></Button></div>}
               <DndContext sensors={sensors} modifiers={taskDragModifiers} collisionDetection={closestCenter} onDragEnd={reorder}>
                 <SortableContext items={active.map(task => task.id)} strategy={verticalListSortingStrategy}>
                   <div className="task-list"><AnimatePresence initial={false}>{active.map(task => <motion.div key={task.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><TaskCard task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} focusAction={filter === "today"} /></motion.div>)}</AnimatePresence></div>
@@ -273,11 +275,12 @@ export function Dashboard() {
                   {completedExpanded && <div id="completed-task-list" role="region" aria-label="已完成任务列表" className="task-list">{done.map(task => <TaskCard key={task.id} task={task} onEdit={editTask} onOpenCourse={openCourse} onOpenRecords={setRecordTaskId} onStartFocus={startFocus} focusAction={filter === "today"} />)}</div>}
                 </section>}
               </DndContext>
+              </>}
             </section>
           </div>}
           {view === "focus" && <FocusPanel />}
           {view === "calendar" && <CalendarPanel onReview={() => changeView("review")} />}
-          {view === "review" && <ReviewPanel onCalendar={() => changeView("calendar")} onTask={id => { const task = tasks.find(item => item.id === id); if (task?.course_items) openCourse(id); else setRecordTaskId(id); }} />}
+          {view === "review" && <ReviewPanel onCalendar={() => changeView("calendar")} onTask={id => { const task = [...tasks, ...archivedTasks].find(item => item.id === id); if (task?.course_items) openCourse(id); else setRecordTaskId(id); }} />}
           {view === "rewards" && <RewardsPanel />}
           {view === "account" && <AccountPanel />}
         </>}
@@ -288,7 +291,7 @@ export function Dashboard() {
     <nav className="mobile-nav" aria-label="移动导航">{navigation.filter(item => item.id !== "review").map(item => <button key={item.id} aria-label={item.label} className={view === item.id || view === "review" && item.id === "calendar" ? "active" : ""} onClick={() => changeView(item.id)} aria-current={view === item.id || view === "review" && item.id === "calendar" ? "page" : undefined}><item.icon size={21} />{item.id === "focus" ? <FocusNavLabel /> : <span>{item.label}</span>}</button>)}</nav>
     <DayPlanPicker open={planPickerOpen} onClose={() => setPlanPickerOpen(false)} onSaved={() => { setPlanPickerOpen(false); setView("tasks"); chooseFilter("today"); }} />
     <TaskForm open={formOpen} onOpenChange={setFormOpen} task={editing} initialKind={initialKind} />
-    <ProgressRecords taskId={recordTaskId} onClose={() => setRecordTaskId(null)} returnFocus={view === "review" || view === "tasks" && filter === "today" ? () => document.getElementById("main-content") : undefined} />
+    <ProgressRecords taskId={recordTaskId} onClose={() => setRecordTaskId(null)} returnFocus={view === "review" || view === "tasks" && (filter === "today" || filter === "archive") ? () => document.getElementById("main-content") : undefined} />
     <Dialog open={Boolean(course)} onOpenChange={open => { if (!open) setCourseId(null); }}>
       <DialogContent className="course-drawer" onCloseAutoFocus={event => {
         event.preventDefault();
@@ -300,14 +303,14 @@ export function Dashboard() {
           ? { taskId: openedCourseId.current, owner: ownerIdentity(), date: todayPlan.date, anchor: target } : null;
       }}>
         {course && <>
-          <div className="course-drawer-header"><span className="course-drawer-eyebrow"><BookOpen size={16} />课程学习{(course.daily_goal || course.daily_minimum) > 0 && <span className={`course-daily-summary ${course.daily_done ? 'is-met' : ''}`} title={`每天最少 ${course.daily_minimum} 节，目标 ${course.daily_goal ?? course.daily_minimum} 节`}>今日 {course.today_amount} / {course.daily_goal ?? course.daily_minimum} 节{course.daily_done ? ' · 已达标' : ''}</span>}</span><DialogTitle>{course.name}</DialogTitle><DialogDescription className={course.description ? undefined : "sr-only"}>{course.description || "逐项勾选课程，记录学习进度。"}</DialogDescription><div className="course-drawer-progress"><span>{course.is_done ? "课程已完成" : "学习进度"}</span><strong>{course.progress} / {course.target} 节</strong></div><div className="course-progress-track"><span style={{ width: `${course.target ? course.progress / course.target * 100 : 0}%` }} /></div></div>
-          <div className="course-drawer-body"><CourseItems key={course.id} task={course} /></div>
-          <div className="course-drawer-footer"><span>{course.is_done ? "这一程，已经走完。" : "每完成一节，都在向前。"}</span><Button variant="secondary" onClick={() => setCourseId(null)}>{view === "review" ? "返回每周回顾" : "返回任务列表"}</Button></div>
+          <div className="course-drawer-header"><span className="course-drawer-eyebrow"><BookOpen size={16} />课程学习{course.archived_at ? <span className="course-daily-summary">已归档 · 只读</span> : (course.daily_goal || course.daily_minimum) > 0 && <span className={`course-daily-summary ${course.daily_done ? 'is-met' : ''}`} title={`每天最少 ${course.daily_minimum} 节，目标 ${course.daily_goal ?? course.daily_minimum} 节`}>今日 {course.today_amount} / {course.daily_goal ?? course.daily_minimum} 节{course.daily_done ? ' · 已达标' : ''}</span>}</span><DialogTitle>{course.name}</DialogTitle><DialogDescription className={course.description ? undefined : "sr-only"}>{course.description || "逐项勾选课程，记录学习进度。"}</DialogDescription><div className="course-drawer-progress"><span>{course.is_done ? "课程已完成" : "学习进度"}</span><strong>{course.progress} / {course.target} 节</strong></div><div className="course-progress-track"><span style={{ width: `${course.target ? course.progress / course.target * 100 : 0}%` }} /></div></div>
+          <div className="course-drawer-body"><CourseItems key={course.id} task={course} readonlyIndices={course.archived_at ? course.course_items!.map((_, index) => index) : []} /></div>
+          <div className="course-drawer-footer"><span>{course.archived_at ? "恢复任务后，可继续学习。" : course.is_done ? "这一程，已经走完。" : "每完成一节，都在向前。"}</span><Button variant="secondary" onClick={() => setCourseId(null)}>{view === "review" ? "返回每周回顾" : "返回任务列表"}</Button></div>
         </>}
       </DialogContent>
     </Dialog>
     <Dialog open={Boolean(unlocked) && !recordTaskId && !courseId && !formOpen && !planPickerOpen && !quickFeedbackVisible && (!completionUndo || completionUndo.rewardId === unlocked?.id)} onOpenChange={open => { if (!open) dismissUnlock(); }}><DialogContent className="unlock-dialog"><motion.div className="unlock-icon" initial={{ scale: .6, rotate: -10 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", damping: 14 }}><Gift size={52} strokeWidth={1.3} /></motion.div><p className="eyebrow">努力，值得被好好奖励</p><DialogTitle>一个心愿，解锁了。</DialogTitle><DialogDescription>你为「{unlocked?.name}」走过的每一步，都有意义。</DialogDescription>{unlocked?.image_url && <img className="unlock-image" src={unlocked.image_url} alt={unlocked.name} />}<Button onClick={() => { dismissUnlock(); changeView("rewards"); }}>收下这份奖励<Check size={16} /></Button>{completionUndo?.rewardId === unlocked?.id && completionUndo && <Button variant="ghost" disabled={completionUndo.pending || busy} onClick={() => void undoCompletion()}>撤销</Button>}</DialogContent></Dialog>
-    <Dialog open={help} onOpenChange={setHelp}><DialogContent><DialogTitle>一步一步，用好 PawnSteps</DialogTitle><DialogDescription>让任务跟着你的节奏走。</DialogDescription><div className="help-content"><p><strong>普通任务：</strong>点击 +1、+5 记录进度，点错用 −1 修正；全部完成时可通过提示撤回最后一笔，其他数量和备注可从记录入口操作。</p><p><strong>每日打卡：</strong>一天可以记录多次，达到每日最低量才计为达标；超额完成不重复累计天数。</p><p><strong>计划任务：</strong>按当天配额记录，0 和 -1 是休息日；到期标记结束，进度保留实际完成量。</p><p><strong>课程学习：</strong>点击“继续学习”打开课程清单；鼠标可从条目或空白处框选。已完成项再框选可取消，Shift + 框选强制取消；完成的条目和章节会变绿。</p><p><strong>打卡日历：</strong>有进度就显示圆点，低于最低量、达标和超额分别展示；未做的日期没有圆点。</p><p><strong>已完成任务：</strong>收在列表底部，展开后可以查看和调整。</p><p className="muted">打卡时区：{timezone}。游客可创建 10 个任务，其中每日或计划任务最多 3 个。</p></div><Button variant="secondary" onClick={toggleMuted}>{muted ? <VolumeX size={17} /> : <Volume2 size={17} />}{muted ? "开启音效" : "静音"}</Button></DialogContent></Dialog>
+    <Dialog open={help} onOpenChange={setHelp}><DialogContent><DialogTitle>一步一步，用好 PawnSteps</DialogTitle><DialogDescription>让任务跟着你的节奏走。</DialogDescription><div className="help-content"><p><strong>普通任务：</strong>点击 +1、+5 记录进度，点错用 −1 修正；全部完成时可通过提示撤回最后一笔，其他数量和备注可从记录入口操作。</p><p><strong>每日打卡：</strong>一天可以记录多次，达到每日最低量才计为达标；超额完成不重复累计天数。</p><p><strong>计划任务：</strong>按当天配额记录，0 和 -1 是休息日；到期标记结束，进度保留实际完成量。</p><p><strong>课程学习：</strong>点击“继续学习”打开课程清单；鼠标可从条目或空白处框选。已完成项再框选可取消，Shift + 框选强制取消；完成的条目和章节会变绿。</p><p><strong>打卡日历：</strong>有进度就显示圆点，低于最低量、达标和超额分别展示；未做的日期没有圆点。</p><p><strong>归档任务：</strong>在更多菜单中归档，历史与进度保留；后续打卡暂停，恢复后沿用原周期与计划日期。</p><p><strong>已完成任务：</strong>收在列表底部，展开后可以查看和调整。</p><p className="muted">打卡时区：{timezone}。游客可创建 10 个任务，其中每日或计划任务最多 3 个。</p></div><Button variant="secondary" onClick={toggleMuted}>{muted ? <VolumeX size={17} /> : <Volume2 size={17} />}{muted ? "开启音效" : "静音"}</Button></DialogContent></Dialog>
     <Toaster theme={dark ? "dark" : "light"} position="bottom-right" richColors closeButton />
   </div></MotionConfig>;
 }

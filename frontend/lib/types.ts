@@ -6,7 +6,7 @@ export interface Task {
   position: number; reward_id: string | null; daily_goal: number | null; daily_minimum: number; daily_quota: number; daily_progress: number;
   daily_done: boolean; daily_date: string | null; daily_plan: number[] | null;
   plan_start_date: string | null; course_items: CourseItem[] | null;
-  owner_id: string; created_at: string; updated_at: string;
+  owner_id: string; created_at: string; updated_at: string; archived_at?: string | null;
   schedule: TaskSchedule; pending_schedule?: TaskSchedule | null; pending_schedule_date?: string | null;
   is_scheduled_today: boolean; weekly_completed: number; weekly_target: number | null;
   unit: string; today_amount: number; record_count: number; plan_expired: boolean;
@@ -31,7 +31,7 @@ export interface User {
 }
 export interface TodayPlan { date: string; task_ids: string[] }
 export interface MutationResponse {
-  tasks: Task[]; rewards: Reward[]; stats: Stats; unlocked_reward: Reward | null;
+  tasks: Task[]; archived_tasks?: Task[]; rewards: Reward[]; stats: Stats; unlocked_reward: Reward | null;
   today: string; timezone: string;
   undo_token?: string | null; access_token?: string | null; user?: User | null;
   image_url?: string | null; authorization_url?: string | null;

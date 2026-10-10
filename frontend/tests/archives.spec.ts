@@ -1,0 +1,98 @@
+import { expect, test } from '@playwright/test';
+import { archiveCard, archivedRow, cleanupArchiveGuest, seedArchives } from './archive-helpers';
+import { navigate, persistedState, taskCard } from './helpers';
+import type { MutationResponse } from '../lib/types';
+
+test.afterEach(async ({ page }) => { await cleanupArchiveGuest(page); });
+
+test('archive removes a selected task, preserves calendar and records, and restores its original progress', async ({ page }) => {
+  const { tasks: [task], headers } = await seedArchives(page);
+  await taskCard(page, task.name).getByRole('button', { name: `${task.name}增加1页`, exact: true }).click();
+  await expect(taskCard(page, task.name).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+  const before = await persistedState(page);
+  expect((await page.request.put('/api/day-plan', { headers, data: { date: before.today, task_ids: [task.id] } })).ok()).toBeTruthy();
+  await page.reload();
+  await archiveCard(page, task);
+  const saved = await persistedState(page);
+  expect(saved.tasks).toHaveLength(0);
+  expect(saved.today_plan.task_ids).toEqual([]);
+  expect(saved.archived_tasks![0].progress).toBe(1);
+  expect(saved.archived_tasks![0].created_at).toBe(task.created_at);
+  await navigate(page, '打卡日历');
+  await expect(page.locator('.calendar-panel')).toContainText(task.name);
+  const calendar = await page.request.get('/api/history', { headers });
+  expect((await calendar.json()).history.some((row: { task_id: string; amount: number }) => row.task_id === task.id && row.amount === 1)).toBeTruthy();
+  await navigate(page, '我的任务');
+  await page.getByRole('button', { name: '归档任务', exact: true }).click();
+  const row = archivedRow(page, task);
+  await row.getByRole('button', { name: `${task.name}查看记录`, exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: `记录进度 · ${task.name}`, exact: true });
+  await expect(dialog).toContainText('任务已归档，记录只读');
+  await expect(dialog.locator('.record-entry')).toHaveCount(1);
+  await expect(dialog.getByRole('button', { name: /编辑记录|撤销记录|保存记录/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await row.getByRole('button', { name: `恢复${task.name}`, exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await page.getByRole('button', { name: '全部', exact: true }).click();
+  await expect(taskCard(page, task.name).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+  expect((await persistedState(page)).today_plan.task_ids).toEqual([task.id]);
+  await page.reload();
+  await taskCard(page, task.name).getByRole('button', { name: `${task.name}增加1页`, exact: true }).click();
+  await expect(taskCard(page, task.name).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '2');
+});
+
+test('completed archives retain XP and support deletion with undo back into archives', async ({ page }, testInfo) => {
+  const { tasks: [task], headers } = await seedArchives(page);
+  const completed = await page.request.post(`/api/tasks/${task.id}/records`, { headers, data: { amount: 20, request_id: crypto.randomUUID() } });
+  expect(completed.status()).toBe(201);
+  await page.reload();
+  await page.getByRole('button', { name: '已完成', exact: true }).click();
+  await archiveCard(page, task);
+  await page.getByRole('button', { name: '归档任务', exact: true }).click();
+  const row = archivedRow(page, task);
+  await expect(row).toContainText('已完成');
+  expect((await persistedState(page)).stats.xp).toBe(100);
+  await page.screenshot({ path: testInfo.outputPath('archive-desktop.png') });
+  await row.getByRole('button', { name: `${task.name}归档操作`, exact: true }).click();
+  await page.getByRole('menuitem', { name: `删除归档${task.name}`, exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await page.locator('[data-sonner-toast]').filter({ hasText: '任务已删除' }).getByRole('button', { name: '撤销', exact: true }).click();
+  await expect(row).toBeVisible();
+  expect((await persistedState(page)).stats.xp).toBe(100);
+  await row.getByRole('button', { name: `恢复${task.name}`, exact: true }).click();
+  await expect(row).toHaveCount(0);
+  await page.getByRole('button', { name: '已完成', exact: true }).click();
+  await expect(taskCard(page, task.name)).toBeVisible();
+  await expect(taskCard(page, task.name).locator('.compact-stepper')).toHaveCount(0);
+  expect((await persistedState(page)).stats.xp).toBe(100);
+});
+
+test('archived courses are readonly and restored checklists remain editable', async ({ page }) => {
+  const { headers } = await seedArchives(page, 0);
+  const name = '保留课程归档测试';
+  const response = await page.request.post('/api/tasks', { headers, data: { name, course_items: [{ name: '章节/', done: false }, { name: '第一节', done: false }, { name: '第二节', done: false }] } });
+  expect(response.status()).toBe(201);
+  const task = (await response.json() as MutationResponse).tasks.find(task => task.name === name)!;
+  expect((await page.request.post(`/api/tasks/${task.id}/course`, { headers, data: { indices: [1], done: true } })).ok()).toBeTruthy();
+  await page.reload();
+  await archiveCard(page, task);
+  await page.getByRole('button', { name: '归档任务', exact: true }).click();
+  await archivedRow(page, task).getByRole('button', { name: `${name}查看课程`, exact: true }).click();
+  const drawer = page.getByRole('dialog', { name, exact: true });
+  await expect(drawer.getByRole('checkbox', { name: '第一节', exact: true })).toBeChecked();
+  await expect(drawer.getByRole('checkbox', { name: '第二节', exact: true })).toBeDisabled();
+  await expect(drawer).toContainText('已归档 · 只读');
+  // Use a real pointer attempt: locator.click intentionally waits for disabled controls.
+  const bounds = (await drawer.locator('[data-course-item="2"]').boundingBox())!;
+  await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  expect((await persistedState(page)).archived_tasks![0].progress).toBe(1);
+  await page.keyboard.press('Escape');
+  await archivedRow(page, task).getByRole('button', { name: `恢复${name}`, exact: true }).click();
+  await expect(archivedRow(page, task)).toHaveCount(0);
+  await page.getByRole('button', { name: '全部', exact: true }).click();
+  await taskCard(page, name).getByRole('button', { name: `${name}继续学习`, exact: true }).click();
+  await expect(drawer.getByRole('checkbox', { name: '第二节', exact: true })).toBeEnabled();
+  await drawer.locator('[data-course-item="2"]').click();
+  await expect.poll(async () => (await persistedState(page)).tasks[0].progress).toBe(2);
+});

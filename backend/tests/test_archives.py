@@ -153,7 +153,7 @@ async def test_archives_survive_guest_migration_and_export(client, guest_headers
 async def test_active_focus_must_be_confirmed_before_archive(client, guest_headers):
     task = await create_task(client, guest_headers)
     started = assert_mutation(await client.post('/api/focus/start', headers=guest_headers,
-        json={'task_id': task['id'], 'request_id': str(uuid4())}))
+        json={'task_id': task['id'], 'request_id': str(uuid4())}), 201)
     assert (await client.post(f"/api/tasks/{task['id']}/archive", headers=guest_headers)).status_code == 409
     session_id = started['focus']['active_session']['id']
     assert_mutation(await client.post(f'/api/focus/{session_id}/end', headers=guest_headers))
@@ -172,3 +172,20 @@ async def test_archived_items_are_excluded_from_drag_order(client, guest_headers
     assert len(reordered['archived_tasks']) == 1
     restored = await archive(client, guest_headers, one['id'], restore=True)
     assert {row['id'] for row in restored['tasks']} == {one['id'], two['id']}
+
+
+async def test_weekly_archive_keeps_the_rule_and_counts_only_available_days(client, guest_headers, frozen_day):
+    frozen_day['date'] = date(2026, 10, 5)
+    task = await create_task(client, guest_headers, target=20, daily_minimum=1,
+        schedule={'mode': 'weekly', 'weekly_target': 4})
+    await add_record(client, guest_headers, task['id'], 1)
+    await archive(client, guest_headers, task['id'])
+    frozen_day['date'] = date(2026, 10, 11)
+    restored = await archive(client, guest_headers, task['id'], restore=True)
+    row = restored['tasks'][0]
+    assert row['schedule']['weekly_target'] == 4
+    assert row['weekly_target'] == 2 and row['weekly_completed'] == 1
+    assert row['is_scheduled_today']
+    achieved = await add_record(client, guest_headers, task['id'], 1)
+    assert achieved['tasks'][0]['weekly_completed'] == 2
+    assert len((await client.get('/api/history', headers=guest_headers)).json()['history']) == 2

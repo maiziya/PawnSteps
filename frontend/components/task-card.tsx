@@ -5,7 +5,9 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, useReducedMotion } from 'framer-motion';
-import { ArrowRight, BookOpen, CalendarDays, Check, FileText, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Timer, Trash2 } from 'lucide-react';
+import { Archive, ArrowRight, BookOpen, CalendarDays, Check, FileText, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Timer, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { ownerIdentity } from '@/lib/api';
 import type { Task } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
 import { scheduleLabel } from './schedule-fields';
@@ -64,6 +66,16 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
     : !task.is_scheduled_today && !task.daily_done && todayAmount === 0 && task.schedule.mode === 'weekdays' ? '今日休息'
     : restDay || inactivePlan ? minimumLabel : `今日 ${todayAmount}${dailyGoal > 0 ? ` / ${dailyGoal}` : ''} ${task.unit}`;
 
+  async function archive() {
+    const owner = ownerIdentity();
+    try {
+      await mutate(`/tasks/${task.id}/archive`, undefined, 'POST', { feedback: false, expectedOwner: owner });
+      toast('任务已归档，历史记录保留', { duration: 5000, action: { label: '恢复', onClick: () => {
+        void mutate(`/tasks/${task.id}/restore`, undefined, 'POST', { feedback: false, expectedOwner: owner }).catch(() => undefined);
+      } } });
+    } catch { /* Store displays the error. */ }
+  }
+
   async function remove() {
     try { await mutate(`/tasks/${task.id}`, undefined, 'DELETE'); } catch { /* Store displays the error. */ }
   }
@@ -106,6 +118,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
                   {!isCourse && <DropdownMenu.Item disabled={busy || saving} className="task-action-item" aria-label={`${task.name}查看记录`} onSelect={() => onOpenRecords(task.id)}><History size={16} />查看记录</DropdownMenu.Item>}
                   <DropdownMenu.Item className="task-action-item" onSelect={() => setDescriptionOpen(open => !open)} aria-controls={descriptionId} aria-expanded={descriptionOpen}><FileText size={16} />{`${descriptionOpen ? '收起' : '查看'}${detailsLabel}`}</DropdownMenu.Item>
                   <DropdownMenu.Separator className="task-action-separator" />
+                  <DropdownMenu.Item disabled={busy || saving} className="task-action-item" aria-label={`归档${task.name}`} onSelect={() => void archive()}><Archive size={16} />归档任务</DropdownMenu.Item>
                   <DropdownMenu.Item disabled={busy} className="task-action-item task-action-delete" aria-label={`删除${task.name}`} onSelect={() => void remove()}><Trash2 size={16} />删除任务</DropdownMenu.Item>
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>

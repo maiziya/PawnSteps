@@ -23,7 +23,7 @@ function sortRecords(records: ProgressRecord[]): ProgressRecord[] {
 }
 
 export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: string | null; onClose: () => void; returnFocus?: () => HTMLElement | null }) {
-  const task = useAppStore(state => state.tasks.find(item => item.id === taskId));
+  const task = useAppStore(state => [...state.tasks, ...state.archivedTasks].find(item => item.id === taskId));
   const mutate = useAppStore(state => state.mutate);
   const busy = useAppStore(state => state.busy);
   const timezone = useAppStore(state => state.timezone);
@@ -110,7 +110,7 @@ export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: stri
 
   async function saveEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!task || !editingId || pending) return;
+    if (!task || task.archived_at || !editingId || pending) return;
     if (!validAmount(editAmount)) { setEditError('请输入 1–1000000 的整数'); return; }
     if (editNote.length > 200) { setEditError('备注最多 200 个字'); return; }
     setEditError('');
@@ -124,7 +124,7 @@ export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: stri
   }
 
   async function revoke(record: ProgressRecord) {
-    if (!task || pending) return;
+    if (!task || task.archived_at || pending) return;
     setSubmitting(true);
     try {
       applyRecord(await mutate(`/tasks/${task.id}/records/${record.id}`, undefined, 'DELETE'));
@@ -136,10 +136,10 @@ export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: stri
 
   const isPlan = task?.daily_plan !== null && task?.daily_plan !== undefined;
   const isDaily = Boolean(task && (task.daily_quota > 0 || isPlan));
-  const canRecord = Boolean(task && !task.plan_expired && !(isPlan && task.daily_quota === 0) && (!task.is_done || (isDaily && task.daily_done)));
+  const canRecord = Boolean(task && !task.archived_at && !task.plan_expired && !(isPlan && task.daily_quota === 0) && (!task.is_done || (isDaily && task.daily_done)));
   const pending = busy || submitting || loading;
   const unit = task?.unit || '步';
-  const status = task?.plan_expired ? '计划已结束，可查看和调整已有记录。'
+  const status = task?.archived_at ? '任务已归档，记录只读；恢复任务后可以继续记录和调整。' : task?.plan_expired ? '计划已结束，可查看和调整已有记录。'
     : isPlan && task?.daily_quota === 0 ? (task?.daily_done ? '今天是休息日，无需记录。' : `计划从 ${task?.plan_start_date} 开始。`)
     : !canRecord ? '目标已完成，可查看和调整已有记录。'
     : task?.daily_done ? '今日已达标，仍可继续记录实际完成量。' : '每次记录一段实际完成量，进度会自动汇总。';
@@ -177,9 +177,9 @@ export function ProgressRecords({ taskId, onClose, returnFocus }: { taskId: stri
           {records.length === 0 && !loading && !loadError && <p className="record-empty">还没有记录，完成后在这里留下一笔。</p>}
           <div className="record-list">{records.map(record => <article className="record-entry" key={record.id} aria-label={`进度记录 ${record.id}`}>
             <div className="record-entry-heading"><strong>{record.amount} <span>{unit}</span></strong><span className="record-date">{record.date === null ? '旧版累计 · 日期未知' : `${record.source === 'legacy' ? '旧版记录 · ' : ''}${record.date}${record.source === 'manual' ? ` ${new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, hour: '2-digit', minute: '2-digit' }).format(new Date(record.created_at))}` : ''}`}</span></div>
-            {editingId === record.id ? <form className="record-edit-form" onSubmit={saveEdit}><label htmlFor={`edit-amount-${record.id}`}>修改完成量<Input id={`edit-amount-${record.id}`} type="number" min={1} max={MAX_AMOUNT} step={1} value={editAmount} disabled={pending} onChange={event => setEditAmount(event.target.value)} /></label><label htmlFor={`edit-note-${record.id}`}>修改备注<Input id={`edit-note-${record.id}`} value={editNote} maxLength={200} disabled={pending} onChange={event => setEditNote(event.target.value)} /></label>{editError && <p role="alert" className="record-error">{editError}</p>}<div className="record-edit-actions"><Button type="button" variant="ghost" disabled={pending} onClick={() => setEditingId(null)}>取消编辑</Button><Button type="submit" disabled={pending}>保存修改</Button></div></form> : <>
+            {editingId === record.id && !task.archived_at ? <form className="record-edit-form" onSubmit={saveEdit}><label htmlFor={`edit-amount-${record.id}`}>修改完成量<Input id={`edit-amount-${record.id}`} type="number" min={1} max={MAX_AMOUNT} step={1} value={editAmount} disabled={pending} onChange={event => setEditAmount(event.target.value)} /></label><label htmlFor={`edit-note-${record.id}`}>修改备注<Input id={`edit-note-${record.id}`} value={editNote} maxLength={200} disabled={pending} onChange={event => setEditNote(event.target.value)} /></label>{editError && <p role="alert" className="record-error">{editError}</p>}<div className="record-edit-actions"><Button type="button" variant="ghost" disabled={pending} onClick={() => setEditingId(null)}>取消编辑</Button><Button type="submit" disabled={pending}>保存修改</Button></div></form> : <>
               {record.note && <p className="record-note">{record.note}</p>}
-              <div className="record-entry-actions"><button type="button" disabled={pending} onClick={() => { setEditingId(record.id); setEditAmount(String(record.amount)); setEditNote(record.note); setEditError(''); }}><Pencil size={14} />编辑记录</button><button type="button" disabled={pending} onClick={() => void revoke(record)}><RotateCcw size={14} />撤销记录</button></div>
+              {!task.archived_at && <div className="record-entry-actions"><button type="button" disabled={pending} onClick={() => { setEditingId(record.id); setEditAmount(String(record.amount)); setEditNote(record.note); setEditError(''); }}><Pencil size={14} />编辑记录</button><button type="button" disabled={pending} onClick={() => void revoke(record)}><RotateCcw size={14} />撤销记录</button></div>}
             </>}
           </article>)}</div>
           {loading && <p className="record-loading" role="status"><LoaderCircle size={16} className="animate-spin" />正在读取记录</p>}

@@ -23,6 +23,35 @@ async def test_first_reward_fetch_creates_each_milestone_once(client, guest_head
     assert all({reward["id"] for reward in state["rewards"]} == expected for state in states)
 
 
+async def test_archive_and_progress_are_serialized_across_workers(
+    client, guest_headers, session_factory, postgres_only, monkeypatch
+):
+    from sqlalchemy import select
+    from app.models import TaskArchivePeriod
+    from app.services import tracker
+
+    task = await create_task(client, guest_headers, target=20)
+
+    class IndependentWorkerLocks:
+        def setdefault(self, owner_id, lock):
+            return lock
+
+    monkeypatch.setattr(tracker, '_locks', IndependentWorkerLocks())
+    responses = await asyncio.gather(
+        client.post(f"/api/tasks/{task['id']}/records", headers=guest_headers, json={'amount': 1}),
+        *[client.post(f"/api/tasks/{task['id']}/archive", headers=guest_headers) for _ in range(6)],
+    )
+    assert responses[0].status_code in (201, 409)
+    for response in responses[1:]:
+        assert_mutation(response)
+    final = assert_mutation(await client.get('/api/state', headers=guest_headers))
+    assert final['tasks'] == [] and len(final['archived_tasks']) == 1
+    assert final['archived_tasks'][0]['progress'] == int(responses[0].status_code == 201)
+    async with session_factory() as session:
+        rows = (await session.scalars(select(TaskArchivePeriod))).all()
+        assert len(rows) == 1 and rows[0].ends_on is None
+
+
 async def test_simultaneous_daily_completion_adds_only_one_day(client, guest_headers, postgres_only):
     task = await create_task(client, guest_headers, daily_quota=1, target=5)
     responses = await asyncio.gather(*[

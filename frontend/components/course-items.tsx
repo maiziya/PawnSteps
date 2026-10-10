@@ -32,6 +32,8 @@ function projectItems(source: CourseItem[], updates: PendingUpdate[]): CourseIte
 export function CourseItems({ task, onSelectionChange, readonlyIndices = [] }: { task: Task; onSelectionChange?: (indices: number[], done: boolean) => void; readonlyIndices?: number[] }) {
   const selectionCallback = useRef(onSelectionChange);
   selectionCallback.current = onSelectionChange;
+  const archivedRef = useRef(Boolean(task.archived_at));
+  archivedRef.current = Boolean(task.archived_at);
   const readonlyRef = useRef(new Set(readonlyIndices));
   readonlyRef.current = new Set(readonlyIndices);
   const [pendingUpdates, setPendingUpdates] = useState<PendingUpdate[]>([]);
@@ -81,6 +83,7 @@ export function CourseItems({ task, onSelectionChange, readonlyIndices = [] }: {
   }
 
   async function setItems(indices: number[], done: boolean) {
+    if (archivedRef.current) return;
     const eligible = [...new Set(indices)].filter(index => itemsRef.current[index] && !itemsRef.current[index].name.endsWith('/') && !readonlyRef.current.has(index));
     if (!eligible.some(index => itemsRef.current[index].done !== done)) return;
     if (!eligible.length) return;
@@ -201,7 +204,7 @@ export function CourseItems({ task, onSelectionChange, readonlyIndices = [] }: {
   }, []);
 
   function beginSelection(event: globalThis.PointerEvent) {
-    if (event.pointerType !== 'mouse' || event.button !== 0 || !window.matchMedia('(any-pointer: fine)').matches) return;
+    if (archivedRef.current || event.pointerType !== 'mouse' || event.button !== 0 || !window.matchMedia('(any-pointer: fine)').matches) return;
     suppressClick.current = false;
     const target = event.target as Element;
     const courseCheckbox = target.matches('input[type=checkbox]') && target.closest('[data-course-item]');
@@ -267,7 +270,7 @@ export function CourseItems({ task, onSelectionChange, readonlyIndices = [] }: {
     }}>
       <div className="course-selection-help">
         <span>{nextIndex >= 0 ? <button type="button" className="course-locate-next" aria-label="定位下一节" title={`下一节：${displayCourseItemName(items[nextIndex].name)}`} onClick={event => locateNext(event.detail === 0)}><ChevronDown size={14} />定位下一节</button> : <><SquareCheck size={14} />课程已完成</>}</span>
-        <span className="course-mouse-hint">拖动框选 · Shift + 框选取消</span>
+        <span className="course-mouse-hint">{task.archived_at ? '已归档 · 只读' : '拖动框选 · Shift + 框选取消'}</span>
       </div>
       <p className="sr-only" aria-live="polite">{selection && selected.size ? `松开将${selectionCompletes ? '完成' : '取消完成'} ${selected.size} 项` : ''}</p>
       <div className="space-y-2">
