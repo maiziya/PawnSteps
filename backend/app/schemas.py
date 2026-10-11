@@ -304,6 +304,7 @@ class TaskOut(BaseModel):
     unit: str
     target: int
     progress: int
+    total_amount: int | None = None
     today_amount: int
     record_count: int
     plan_expired: bool

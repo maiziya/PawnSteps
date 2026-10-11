@@ -4,6 +4,7 @@ export type CategoryColor = "clay" | "sage" | "ochre" | "slate" | "rose" | "lave
 export interface TaskCategory { id: string; name: string; color: CategoryColor; position: number }
 export interface Task {
   record_start_date?: string | null; record_end_date?: string | null;
+  total_amount?: number | null;
   category_id?: string | null;
   id: string; name: string; description: string; deadline?: string | null; target: number; progress: number;
   is_done: boolean; done_at: string | null; priority: "high" | "medium" | "low";

@@ -299,6 +299,9 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
             task.plan_expired = bool(task.daily_plan is not None and task.plan_start_date is not None
                                      and day >= task.plan_start_date + timedelta(days=len(task.daily_plan)))
         schedules.project(task, day)
+        # Actual work is separate from capped goal progress and daily achievement days.
+        task.total_amount = task.progress if task.course_items is not None else sum(
+            amount for record_day, amount in work.items() if record_day is None or record_day <= day)
         task.record_start_date = record_start(task)
         task.record_end_date = record_end(task)
     rewards = list((await session.scalars(select(Reward).where(Reward.owner_id == owner_id).order_by(Reward.position, Reward.id))).all())

@@ -53,6 +53,8 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
   const useDailyMeter = isDaily && task.daily_quota > 0 && !task.plan_expired && (!task.is_done || task.daily_done || task.today_amount > 0);
   const todayAmount = previewing ? Math.max(0, feedback.previousToday + feedback.amount) : task.today_amount;
   const meterMaximum = useDailyMeter ? dailyGoal : task.target;
+  const totalAmount = isDaily ? task.progress : task.total_amount ?? task.progress;
+  const displayedTotal = previewing && !isDaily ? Math.max(0, feedback.previousTotal + feedback.amount) : totalAmount;
   const meterCurrent = useDailyMeter ? Math.min(meterMaximum, todayAmount) : Math.max(0, Math.min(task.target, previewing ? feedback.previousProgress + feedback.amount : task.progress));
 
   const Icon = isCourse ? BookOpen : isPlan ? CalendarDays : isDaily ? Sun : Flag;
@@ -140,7 +142,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
           <button type="button" className="compact-course-open" data-course-trigger={task.id} aria-label={`${task.name}${task.is_done ? '查看课程' : '继续学习'}`} onClick={() => onOpenCourse(task.id)}>{task.is_done ? '查看课程' : '继续学习'}<ArrowRight size={16} /></button>
         </div> : <div className={`compact-quick-progress ${task.is_done ? 'is-readonly' : ''}`}>
           <div className="compact-course-meter">
-            <TaskProgress label={meterCaption} ariaLabel={`${task.name}${useDailyMeter ? '今日' : '总'}进度`} value={meterCurrent} displayValue={useDailyMeter ? todayAmount : meterCurrent} maximum={meterMaximum} unit={isDaily && !isPlan && !useDailyMeter ? '天' : task.unit} minimum={useDailyMeter ? dailyMinimum : 0} met={!task.plan_expired && (useDailyMeter ? task.daily_done : task.is_done)} pending={saving} failed={feedback?.phase === 'failed'} effect={progressEffect} daily={useDailyMeter} texture={isDaily || isPlan ? 'leaf' : 'woven'} />
+            <TaskProgress label={meterCaption} ariaLabel={`${task.name}${useDailyMeter ? '今日' : '总'}进度`} value={meterCurrent} displayValue={useDailyMeter ? todayAmount : displayedTotal} maximum={meterMaximum} unit={isDaily && !isPlan && !useDailyMeter ? '天' : task.unit} minimum={useDailyMeter ? dailyMinimum : 0} met={!task.plan_expired && (useDailyMeter ? task.daily_done : task.is_done)} pending={saving} failed={feedback?.phase === 'failed'} effect={progressEffect} daily={useDailyMeter} texture={isDaily || isPlan ? 'leaf' : 'woven'} />
           </div>
           <div className="compact-quick-actions">
             {!task.is_done && <div className="compact-stepper" role="group" aria-label={`${task.name}调整进度`}>
@@ -159,7 +161,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
         {descriptionOpen && <div id={descriptionId} className="compact-task-description">
           <dl className="compact-task-facts">
             <div><dt>任务总量</dt><dd>{task.target} {totalUnit}</dd></div>
-            <div><dt>累计完成</dt><dd>{task.progress} {totalUnit}</dd></div>
+            <div><dt>累计完成</dt><dd>{totalAmount} {totalUnit}</dd></div>
             {(!isCourse || dailyGoal > 0) && <><div><dt>每日目标量</dt><dd>{dailyGoal > 0 ? `${dailyGoal} ${task.unit}` : '未设置'}</dd></div><div><dt>最小完成量</dt><dd>{dailyMinimum > 0 ? `${dailyMinimum} ${task.unit}` : restDay ? '休息日' : '未设置'}</dd></div></>}
             <div><dt>执行周期</dt><dd>{frequencyLabel}</dd></div><div><dt>今日完成</dt><dd>{todayAmount} {isCourse ? '节' : task.unit}</dd></div><div><dt>优先级</dt><dd>{priority}</dd></div>
             <div><dt>创建日期</dt><dd><time dateTime={task.created_at}>{new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(task.created_at))}</time></dd></div>

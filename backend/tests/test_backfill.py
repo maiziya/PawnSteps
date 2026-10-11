@@ -131,3 +131,23 @@ async def test_day_cursor_does_not_skip_dates_when_an_older_missing_day_is_fille
     assert second['has_more'] is False
     assert len({day['date'] for day in first['days'] + second['days']}) == 4
     assert second['days'][-1]['date'] == missing
+
+
+async def test_normal_backfill_exposes_actual_total_beyond_goal_and_recalculates_after_revoke(client, guest_headers, other_guest_headers, frozen_day):
+    task = await create_task(client, guest_headers, target=10)
+    previous = frozen_day['date'].isoformat()
+    frozen_day['date'] += timedelta(days=1)
+    path = f"/api/tasks/{task['id']}/records"
+    first = assert_mutation(await client.post(path, headers=guest_headers, json={'amount': 10, 'date': previous}), 201)
+    extra = assert_mutation(await client.post(path, headers=guest_headers, json={'amount': 3, 'date': previous}), 201)
+    row = extra['tasks'][0]
+    assert row['total_amount'] == 13
+    assert row['progress'] == 10 and row['today_amount'] == 0 and row['is_done'] is True
+    assert extra['stats']['xp'] == first['stats']['xp'] == 100
+    assert (await client.get('/api/state', headers=other_guest_headers)).json()['tasks'] == []
+    assert (await client.get('/api/state', headers=guest_headers)).json()['tasks'][0]['total_amount'] == 13
+    corrected = assert_mutation(await client.patch(f"{path}/{extra['record']['id']}", headers=guest_headers, json={'amount': 1}))
+    assert corrected['tasks'][0]['total_amount'] == 11
+    revoked = assert_mutation(await client.delete(f"{path}/{first['record']['id']}", headers=guest_headers))
+    assert revoked['tasks'][0]['total_amount'] == revoked['tasks'][0]['progress'] == 1
+    assert revoked['stats']['xp'] == 0

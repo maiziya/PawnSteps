@@ -252,7 +252,7 @@ export function ProgressRecords({ taskId, onClose, returnFocus, initialDate }: {
         </DialogHeader>
         {task && <>
           <div className="record-totals" aria-label="进度汇总">
-            <span>{isDaily && !isPlan ? '累计达标' : '总进度'}<strong>{task.progress} / {task.target} <small>{isDaily && !isPlan ? '天' : unit}</small></strong></span>
+            <span>{isDaily && !isPlan ? '累计达标' : '总进度'}<strong>{isDaily ? task.progress : task.total_amount ?? task.progress} / {task.target} <small>{isDaily && !isPlan ? '天' : unit}</small></strong></span>
             <span>{isBackfill ? `${recordDate.slice(5).replace("-", "/")} 完成` : '今日完成'}<strong>{isBackfill ? selectedAmount ?? '—' : task.today_amount}{!isBackfill && isDaily && task.daily_quota > 0 ? ` / ${task.daily_quota}` : ''} <small>{unit}</small></strong></span>
           </div>
           {!task.archived_at && <div className="record-date-picker"><label htmlFor="record-date">完成日期</label><Input id="record-date" aria-label="完成日期" type="date" min={recordStart(task, timezone)} max={today} value={recordDate} disabled={pending} onChange={event => { setRecordDate(event.target.value); pendingAttempt.current = null; setFormError(''); }} /><button type="button" disabled={pending} onClick={() => { setRecordDate(today); pendingAttempt.current = null; }}>今天</button>{isBackfill && <span className="record-backfill-label">补记</span>}</div>}

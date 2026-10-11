@@ -13,6 +13,7 @@ export interface QuickFeedback {
   requestId: string;
   amount: number;
   previousProgress: number;
+  previousTotal: number;
   previousToday: number;
   isRetry: boolean;
   wasComplete: boolean;
@@ -174,7 +175,7 @@ export const useAppStore = create<AppState>((set, get) => {
       const feedback: QuickFeedback = {
         requestId, amount, phase: "saving", isRetry: retry, wasComplete: task.is_done,
         keepVisible: Boolean(task.is_done && previous?.phase === "saved" && (previous.keepVisible || (!previous.wasComplete && previous.previousProgress < task.target))),
-        previousProgress: task.progress, previousToday: task.today_amount,
+        previousProgress: task.progress, previousTotal: task.total_amount ?? task.progress, previousToday: task.today_amount,
       };
       set(state => ({ quickFeedback: { ...state.quickFeedback, [taskId]: feedback } }));
       try {

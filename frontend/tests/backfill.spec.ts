@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { navigate, openCourse, openRecords, persistedState } from './helpers';
+import { navigate, openCourse, openRecords, persistedState, showCompletedTasks } from './helpers';
 import { seedBackfill } from './backfill-helpers';
 
 
@@ -61,4 +61,79 @@ test('course completion can be backfilled and undone while preserving today’s 
   await expect(drawer.locator('[data-course-item="1"] .record-backfill-label')).toHaveCount(0);
   await expect(drawer.getByRole('progressbar', { name: `${task.name}课程进度`, exact: true })).toHaveAttribute('aria-valuenow', '0');
   expect((await persistedState(page)).tasks.find(row => row.id === task.id)!.progress).toBe(0);
+});
+
+test('saving consecutive historical records refreshes both dialog quantities and the card total immediately', async ({ page }) => {
+  const { task, date } = await seedBackfill(page);
+  const dialog = await openRecords(page, task.name);
+  await dialog.getByLabel('完成日期', { exact: true }).fill(date);
+  for (const [amount, total] of [[2, 2], [3, 5]]) {
+    await dialog.getByLabel('本次完成量', { exact: true }).fill(String(amount));
+    await dialog.getByRole('button', { name: '保存补记', exact: true }).click();
+    await expect(dialog.locator('.record-totals>span').nth(0)).toContainText(`${total} / 10`);
+    await expect(dialog.locator('.record-totals>span').nth(1)).toContainText(String(total));
+    await expect(dialog.locator('.record-day-summary')).toContainText(`${total} 页`);
+  }
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  const card = page.locator('article.task-card').filter({ has: page.getByRole('heading', { name: task.name, exact: true }) });
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '5');
+  await expect(card.getByLabel(`${task.name}已完成量`, { exact: true })).toContainText('今日 0');
+});
+
+test('backfill completion removes the old card and displays the saved progress once', async ({ page }) => {
+  const { task, date } = await seedBackfill(page);
+  const dialog = await openRecords(page, task.name);
+  await dialog.getByLabel('完成日期', { exact: true }).fill(date);
+  await dialog.getByLabel('本次完成量', { exact: true }).fill('10');
+  await dialog.getByRole('button', { name: '保存补记', exact: true }).click();
+  await expect(dialog.locator('.record-totals>span').nth(0)).toContainText('10 / 10');
+  expect((await persistedState(page)).tasks.find(row => row.id === task.id)!.progress).toBe(10);
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await showCompletedTasks(page);
+  const completed = page.getByRole('region', { name: '已完成任务列表', exact: true });
+  await expect(completed.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '10');
+  const cards = page.locator('article.task-card').filter({ has: page.getByRole('heading', { name: task.name, exact: true }) });
+  await expect(cards).toHaveCount(1);
+  await page.reload();
+  await showCompletedTasks(page);
+  await expect(cards).toHaveCount(1);
+  await expect(cards.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '10');
+});
+
+test('extra historical work updates the actual completed quantity on a normal card', async ({ page }) => {
+  const { task, date } = await seedBackfill(page);
+  const dialog = await openRecords(page, task.name);
+  await dialog.getByLabel('完成日期', { exact: true }).fill(date);
+  for (const [amount, total] of [[10, 10], [3, 13]]) {
+    await dialog.getByLabel('本次完成量', { exact: true }).fill(String(amount));
+    await dialog.getByRole('button', { name: '保存补记', exact: true }).click();
+    await expect(dialog.locator('.record-day-summary')).toContainText(`${total} 页`);
+    await expect(dialog.locator('.record-totals>span').nth(0)).toContainText(`${total} / 10`);
+  }
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  await showCompletedTasks(page);
+  const card = page.getByRole('region', { name: '已完成任务列表', exact: true });
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '10');
+  await expect(card.locator('.task-progress-counter')).toHaveAttribute('aria-label', '13 / 10 页');
+  await page.reload();
+  await showCompletedTasks(page);
+  await expect(card.locator('.task-progress-counter')).toHaveAttribute('aria-label', '13 / 10 页');
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuetext', '13 / 10 页');
+});
+
+test('a qualified normal task adds backfilled work to its total without changing today’s quantity', async ({ page }) => {
+  const { task, date } = await seedBackfill(page);
+  const dialog = await openRecords(page, task.name);
+  await dialog.getByLabel('本次完成量', { exact: true }).fill('2');
+  await dialog.getByRole('button', { name: '保存记录', exact: true }).click();
+  await expect(dialog.locator('.record-totals>span').nth(0)).toContainText('2 / 10');
+  expect((await persistedState(page)).tasks.find(row => row.id === task.id)!.daily_done).toBe(true);
+  await dialog.getByLabel('完成日期', { exact: true }).fill(date);
+  await dialog.getByLabel('本次完成量', { exact: true }).fill('3');
+  await dialog.getByRole('button', { name: '保存补记', exact: true }).click();
+  await expect(dialog.locator('.record-totals>span').nth(0)).toContainText('5 / 10');
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click();
+  const card = page.locator('article.task-card').filter({ has: page.getByRole('heading', { name: task.name, exact: true }) });
+  await expect(card.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '5');
+  await expect(card.getByLabel(`${task.name}已完成量`, { exact: true })).toContainText('今日 2 / 3');
 });
