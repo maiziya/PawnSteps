@@ -1,5 +1,7 @@
-.task-form-dialog.dialog-content { width: min(620px, calc(100vw - 32px)); padding: 24px; }
-.task-form-dialog .dialog-header { margin-bottom: 16px; }
+.task-form-dialog.dialog-content { width: min(620px, calc(100vw - 32px)); padding: 24px; display: flex; flex-direction: column; overflow: hidden; }
+.task-form-dialog .dialog-header { margin-bottom: 16px; flex-shrink: 0; }
+.task-form-layout { display: flex; flex-direction: column; min-height: 0; }
+.task-form-scroll { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 4px 6px 4px 4px; margin: -4px -6px -4px -4px; scrollbar-gutter: stable; }
 .task-form-fields { display: grid; gap: 14px; }
 .task-kind-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 .task-kind-option { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 8px 4px; border: 1px solid var(--border); border-radius: 9px; background: transparent; color: var(--muted); font-size: 13px; white-space: nowrap; transition: background-color 150ms ease; }
@@ -16,7 +18,7 @@
 .task-form-dialog textarea.task-plan-input { min-height: 44px; height: 44px; resize: none; }
 .task-course-import { display: grid; gap: 10px; border: 1px dashed var(--border); border-radius: 10px; padding: 12px; }
 .task-course-import .btn { min-height: 44px; }
-.task-form-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.task-form-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); flex-shrink: 0; }
 @media (max-width: 639px) {
   .task-form-dialog.dialog-content { padding: 20px 16px; }
   .task-form-dialog .dialog-header h2 { font-size: 20px; }
@@ -30,7 +32,7 @@
   .task-form-dialog .dialog-header { margin-bottom: 8px; }
   .task-form-fields { gap: 8px; }
   .task-course-import { padding: 8px; gap: 6px; }
-  .task-form-footer { padding-top: 8px; }
+  .task-form-footer { padding-top: 8px; margin-top: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .task-kind-option { transition: none; }

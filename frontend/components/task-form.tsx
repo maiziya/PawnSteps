@@ -260,7 +260,8 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
           <DialogTitle>{task ? '调整你的目标' : '从一个小目标开始'}</DialogTitle>
           <DialogDescription className="sr-only">{task ? '把节奏调整到适合自己的速度。' : '不用一步到位，今天比昨天多走一步。'}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(submit)} className="task-form-fields">
+        <form onSubmit={handleSubmit(submit)} className="task-form-layout">
+          <div className="task-form-scroll task-form-fields">
           {!task && <div className="task-kind-options" role="group" aria-label="任务类型">
             {taskKinds.map(item => <button key={item.value} type="button" aria-pressed={kind === item.value} onClick={() => { setKind(item.value); if (item.value === 'course' && !getFieldState('dailyGoal').isDirty) setValue('dailyGoal', String(Math.min(courseCount || 3, Math.max(3, Number(getValues('dailyQuota')) || 1)))); }} className={`task-kind-option ${kind === item.value ? 'is-selected' : ''}`}>
               <item.icon size={17} aria-hidden="true" /><span>{item.label}</span>
@@ -303,6 +304,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
             </div>}
           </div>}
           <details className="task-course-options"><summary>分类、截止日期与更多设置<ChevronDown size={16} /></summary><div className="task-form-fields">{additionalFields}</div></details>
+          </div>
           <div className="task-form-footer"><Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>取消</Button><Button type="submit" disabled={pending}>{pending && <LoaderCircle size={16} className="animate-spin" />}{task ? '保存调整' : '创建任务'}</Button></div>
         </form>
       </DialogContent>
