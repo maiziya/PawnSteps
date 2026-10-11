@@ -31,6 +31,7 @@ import { ReviewPanel } from "./review-panel";
 import { FocusPanel } from "./focus-panel";
 import { FocusProvider, FocusMini, FocusNavLabel } from "./focus-provider";
 import { useFocusStore } from "@/lib/focus-store";
+import { DailyReminderControl, DailyReminderProvider } from "./daily-reminder";
 import "./workspace.css";
 
 const navigation = [
@@ -213,7 +214,7 @@ export function Dashboard() {
     void useFocusStore.getState().start(taskId).catch(() => undefined);
   }
 
-  return <MotionConfig reducedMotion="user"><div className="app-shell"><FocusProvider />
+  return <MotionConfig reducedMotion="user"><div className="app-shell"><FocusProvider /><DailyReminderProvider />
     <a className="skip-link" href="#main-content">跳到主要内容</a>
     <aside className="sidebar">
       <a href="/" className="brand" aria-label="PawnSteps 首页"><span className="brand-symbol"><Footprints size={23} strokeWidth={2.2} /></span><span>PawnSteps<small>日拱一卒</small></span></a>
@@ -223,7 +224,7 @@ export function Dashboard() {
         <div className="utility-row">
           <button className="icon-button" onClick={toggleTheme} aria-label={dark ? "切换浅色模式" : "切换暗色模式"}>{dark ? <Sun size={19} /> : <Moon size={19} />}</button>
           <button className="icon-button" onClick={toggleMuted} aria-label={muted ? "开启音效" : "静音"} aria-pressed={muted}>{muted ? <VolumeX size={19} /> : <Volume2 size={19} />}</button>
-          <button className="icon-button" onClick={() => setHelp(true)} aria-label="使用说明"><CircleHelp size={19} /></button>
+          <DailyReminderControl /><button className="icon-button" onClick={() => setHelp(true)} aria-label="使用说明"><CircleHelp size={19} /></button>
         </div>
         <button className="sidebar-account" onClick={() => changeView("account")}><span className="avatar">{user?.avatar_url ? <img src={user.avatar_url} alt="我的头像" /> : <UserRound size={21} />}</span><span><strong>{user?.username || "此刻的你"}</strong><small>{user ? "每一天都有新可能" : "游客 · 登录保存"}</small></span></button>
       </div>

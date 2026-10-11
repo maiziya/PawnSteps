@@ -14,7 +14,7 @@ html { scroll-padding-top: 124px; }
 .nav-item:hover { background: var(--surface-soft); color: var(--text); }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
 .sidebar-bottom { margin-top: auto; border-top: 1px solid var(--line); }
-.utility-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; padding: 8px 0 0; }
+.utility-row { display: flex; justify-content: space-between; gap: 4px; margin-bottom: 4px; padding: 8px 0 0; }
 .sidebar-account { display: flex; gap: 10px; align-items: center; background: transparent; border: 0; text-align: left; width: 100%; padding: 8px 0; }
 .avatar { width: 36px; height: 36px; border-radius: 50%; overflow: hidden; background: var(--surface-soft); display: grid; place-items: center; color: var(--muted); flex-shrink: 0; }
 .avatar img { height: 100%; width: 100%; }

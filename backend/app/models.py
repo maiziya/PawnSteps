@@ -277,3 +277,13 @@ class AuthRate(Base):
     key: Mapped[str] = mapped_column(String(255), primary_key=True)
     count: Mapped[int] = mapped_column(Integer, default=0)
     window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReminderDelivery(Base):
+    __tablename__ = 'reminder_deliveries'
+    owner_id: Mapped[str] = mapped_column(ForeignKey('owners.id', ondelete='CASCADE'), primary_key=True)
+    device_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    token: Mapped[uuid.UUID] = mapped_column(Uuid, default=uuid.uuid4)
+    delivered: Mapped[bool] = mapped_column(Boolean, default=False)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
