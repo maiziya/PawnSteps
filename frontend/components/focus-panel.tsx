@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bell, BookOpen, Check, ChevronDown, Coffee, History, Maximize, Minimize, Moon, Pause, Play, Settings2, Square, Sun, Timer, Volume2, VolumeX } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Coffee, History, Maximize, Minimize, Moon, Pause, Play, Settings2, Square, Sun, Timer, Volume2, VolumeX } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -27,20 +27,7 @@ type SettingsForm = z.infer<typeof settingsSchema>;
 function FocusSettingsDialog({ open, onClose, settings }: { open: boolean; onClose: () => void; settings: FocusSettings }) {
   const { register, handleSubmit, reset, formState: { errors } } = useForm<SettingsForm>({ resolver: zodResolver(settingsSchema), defaultValues: settings });
   const busy = useAppStore(state => state.busy);
-  const [notification, setNotification] = useState(false);
-  const [permissionBusy, setPermissionBusy] = useState(false);
-  useEffect(() => { if (open) { reset(settings); setNotification(localStorage.getItem("pawnsteps-focus-notifications") === "true" && typeof Notification !== "undefined" && Notification.permission === "granted"); } }, [open, reset]);
-  async function toggleNotification() {
-    if (notification) { localStorage.removeItem("pawnsteps-focus-notifications"); setNotification(false); return; }
-    if (typeof Notification === "undefined") { toast("当前浏览器不支持桌面通知，可使用音效提醒"); return; }
-    setPermissionBusy(true);
-    try {
-      const permission = await Notification.requestPermission();
-      if (permission === "granted") { localStorage.setItem("pawnsteps-focus-notifications", "true"); setNotification(true); }
-      else toast("未开启通知，可在浏览器的网站设置中调整");
-    } catch { toast("通知暂时不可用，可使用音效提醒"); }
-    finally { setPermissionBusy(false); }
-  }
+  useEffect(() => { if (open) reset(settings); }, [open, reset]);
   return <Dialog open={open} onOpenChange={value => { if (!value) onClose(); }}><DialogContent className="focus-settings"><DialogTitle>专注节奏</DialogTitle><DialogDescription>调整适合你的时间，当前这一轮保持原有时长。</DialogDescription>
     <form onSubmit={handleSubmit(async values => { try { await useFocusStore.getState().write("/settings", values); onClose(); } catch { /* Store reports the failure. */ } })}>
       <div className="focus-settings-grid">{([
@@ -48,7 +35,6 @@ function FocusSettingsDialog({ open, onClose, settings }: { open: boolean; onClo
         ["long_break_minutes", "长休息", 120, "分钟"], ["long_break_interval", "长休息间隔", 12, "轮"],
       ] as const).map(([name, label, max, unit]) => <label key={name}>{label}<div><input className="field" type="number" min={1} max={max} {...register(name, { valueAsNumber: true })} /><span>{unit}</span></div>{errors[name] && <small role="alert">请输入 1–{max} 的整数</small>}</label>)}</div>
       <label className="focus-check"><input type="checkbox" {...register("auto_start_break")} /><span>确认成果后自动开始休息</span></label>
-      <div className="focus-notification"><Bell size={17} /><span>桌面提醒<small>网页保持打开时，到点提醒</small></span><Button type="button" size="sm" variant="outline" disabled={permissionBusy} onClick={() => void toggleNotification()}>{notification ? "关闭" : "开启"}</Button></div>
       <Button type="submit" disabled={busy} className="focus-settings-save">保存设置</Button>
     </form>
   </DialogContent></Dialog>;

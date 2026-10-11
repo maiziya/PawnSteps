@@ -4,7 +4,6 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from app.focus_schemas import FocusState
-from app.reminder_schemas import ReminderState
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -402,7 +401,6 @@ class MutationResponse(BaseModel):
     record_day: ProgressRecordDay | None = None
     record_day_count: int | None = None
     focus: FocusState | None = None
-    reminder: ReminderState | None = None
 
 
 class HistoryEntry(BaseModel):

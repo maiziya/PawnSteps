@@ -100,14 +100,4 @@ Tasks accept `schedule: {mode: "daily" | "weekdays" | "weekly", weekdays: number
 Streaks count actual achieved dates. Non-required weekdays and unfinished weekly windows can bridge a streak without incrementing it; a weekly deficit breaks continuity at Sunday's deadline. A separate due task still requires a check-in on that date. Existing day-by-day plans retain automatic rest-day achievement. Optional work on a rest day remains recordable and can qualify. `/history` adds `rest_dates`, which describes dates with active tasks but no outstanding scheduled obligation.
 
 
-## Daily browser reminders
-
-`GET /reminders` returns the fixed `10:00` schedule, application timezone, `server_now`, application date and `due`. Permission and opt-in belong to the current browser and owner; loading a page never requests notification permission.
-
-`POST /reminders/claim` accepts `{device_id: uuid}` and returns the usual `MutationResponse` plus `reminder`. Within 10:00–10:59 it snapshots current tasks, excludes completed/qualified/archived/rest/future-plan tasks and prioritizes remaining today-plan items. An owner/device/date delivery receipt permits only one active 60-second lease across tabs. `claimed=true` includes a token and notification text; no eligible tasks consumes the day's receipt silently.
-
-`POST /reminders/ack` and `/reminders/release` accept `{device_id, date, token}`. Acknowledgement prevents repeated delivery that day; release permits retry if the browser rejected notification creation. Expired leases can be reclaimed, invalid or other-owner tokens return 409. Receipts are retained for the current and preceding two days. Browser delivery markers protect against an uncertain acknowledgement and remain isolated across accounts.
-
-This release uses desktop browser system notifications while the page remains open. It does not send Web Push after the page is closed. HTTPS (or localhost during development), browser permission and macOS notification settings are required. Suspended devices and throttled tabs may delay delivery; claims after 11:00 are suppressed rather than replaying an outdated reminder.
-
-Alembic revision `e25c61498b3a` adds only `reminder_deliveries`; it does not modify task, reward, history or user rows.
+Desktop notification functionality has been removed. Revision `e25c61498b3a` and the unused `reminder_deliveries` table remain for compatibility with installations that already applied the published migration. No reminder endpoints or browser notification triggers are active.

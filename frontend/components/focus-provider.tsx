@@ -49,10 +49,7 @@ export function FocusProvider() {
           notified.add(session.id);
           if (!data.notification_claimed) return;
           playSound("focus");
-          if (localStorage.getItem("pawnsteps-focus-notifications") === "true" && typeof Notification !== "undefined" && Notification.permission === "granted") {
-            const notification = new Notification(session.phase === "focus" ? "这一轮专注完成了" : "休息结束了", { body: session.phase === "focus" ? `「${session.task_name}」：回到 PawnSteps 确认这一轮的成果。` : "准备好后，开始下一轮专注。", tag: `pawnsteps-${session.id}`, icon: "/icon.svg" });
-            notification.onclick = () => { window.focus(); location.hash = "focus"; notification.close(); };
-          }
+
         }).catch(() => undefined).finally(() => { claiming = false; });
       }
     }, 1000);

@@ -39,7 +39,6 @@ export interface User {
 }
 export interface TodayPlan { date: string; task_ids: string[] }
 export interface MutationResponse {
-  reminder?: import("./reminders").ReminderState | null;
   categories?: TaskCategory[];
   tasks: Task[]; archived_tasks?: Task[]; rewards: Reward[]; stats: Stats; unlocked_reward: Reward | null;
   today: string; timezone: string;

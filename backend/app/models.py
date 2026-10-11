@@ -280,6 +280,7 @@ class AuthRate(Base):
 
 
 class ReminderDelivery(Base):
+    """Retained for compatibility with the published e25c61498b3a migration."""
     __tablename__ = 'reminder_deliveries'
     owner_id: Mapped[str] = mapped_column(ForeignKey('owners.id', ondelete='CASCADE'), primary_key=True)
     device_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
