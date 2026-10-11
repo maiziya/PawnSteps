@@ -93,6 +93,7 @@ interface TaskProgressProps {
   value: number;
   maximum: number;
   displayValue?: number;
+  stages?: import("@/lib/types").TaskStage[];
   unit: string;
   met?: boolean;
   minimum?: number;
@@ -168,7 +169,7 @@ function PatternTexture({ texture, receipt, reduced }: {
   </svg>;
 }
 
-export function TaskProgress({ label, ariaLabel, value, maximum, displayValue = value, unit, met = false, minimum = 0, pending = false, failed = false, effect, daily = false, course = false, texture = course ? 'honeycomb' : daily ? 'leaf' : 'woven' }: TaskProgressProps) {
+export function TaskProgress({ label, ariaLabel, value, maximum, displayValue = value, stages = [], unit, met = false, minimum = 0, pending = false, failed = false, effect, daily = false, course = false, texture = course ? 'honeycomb' : daily ? 'leaf' : 'woven' }: TaskProgressProps) {
   const reduced = Boolean(useReducedMotion());
   const fill = useRef<HTMLDivElement>(null);
   const previousNumber = useRef(displayValue);
@@ -200,6 +201,7 @@ export function TaskProgress({ label, ariaLabel, value, maximum, displayValue = 
           <div ref={fill} className="task-progress-fill" style={{ width: `${fraction * 100}%` }}>
             <PatternTexture texture={texture} receipt={effect} reduced={reduced} />
           </div>
+          {maximum > 0 && stages.filter(stage => stage.value < maximum).map((stage, index) => <i key={stage.value} className={`task-progress-stage-tick ${stage.value <= value ? 'is-reached' : ''}`} aria-hidden="true" style={{ left: `${stage.value / maximum * 100}%` }} title={`${stage.name || `第 ${index + 1} 阶段`} · ${stage.value} ${unit}`} />)}
           {receipt && (receipt.kind === 'daily' || receipt.kind === 'complete') && <span key={`sweep-${receipt.id}`} className="task-progress-sweep" aria-hidden="true" />}
         </div>
         {markMinimum && <span className="task-progress-minimum" style={{ left: `${minimum / maximum * 100}%` }} title={`最小完成量 ${minimum} ${unit}`}><span className="sr-only">最小完成量 {minimum} {unit}</span></span>}

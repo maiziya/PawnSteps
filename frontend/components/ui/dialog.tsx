@@ -9,6 +9,6 @@ export const DialogClose = Primitive.Close;
 export const DialogTitle = Primitive.Title;
 export const DialogDescription = Primitive.Description;
 export function DialogHeader({ children, className }: React.HTMLAttributes<HTMLDivElement>) { return <div className={cn("dialog-header", className)}>{children}</div>; }
-export function DialogContent({ children, className, ...props }: React.ComponentPropsWithoutRef<typeof Primitive.Content>) {
-  return <Primitive.Portal><Primitive.Overlay className="dialog-overlay" /><Primitive.Content className={cn("dialog-content", className)} {...props}>{children}<Primitive.Close className="icon-button dialog-close" aria-label="关闭"><X size={20} /></Primitive.Close></Primitive.Content></Primitive.Portal>;
+export function DialogContent({ children, className, overlayClassName, ...props }: React.ComponentPropsWithoutRef<typeof Primitive.Content> & { overlayClassName?: string }) {
+  return <Primitive.Portal><Primitive.Overlay className={cn("dialog-overlay", overlayClassName)} /><Primitive.Content className={cn("dialog-content", className)} {...props}>{children}<Primitive.Close className="icon-button dialog-close" aria-label="关闭"><X size={20} /></Primitive.Close></Primitive.Content></Primitive.Portal>;
 }

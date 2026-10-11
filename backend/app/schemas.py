@@ -4,8 +4,9 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from app.focus_schemas import FocusState
+from app.stage_schemas import TaskStage, NextStage, StageProgress, ordered_stages
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, computed_field
 
 
 class CourseItem(BaseModel):
@@ -45,6 +46,13 @@ class ScheduleConfig(BaseModel):
 
 
 class TaskCreate(BaseModel):
+    stages: list[TaskStage] = Field(default_factory=list, max_length=6)
+
+    @field_validator('stages')
+    @classmethod
+    def sort_stages(cls, value: list[TaskStage]) -> list[TaskStage]:
+        return ordered_stages(value)
+
     category_id: UUID | None = None
     deadline: date | None = None
     schedule: ScheduleConfig = Field(default_factory=ScheduleConfig)
@@ -93,10 +101,20 @@ class TaskCreate(BaseModel):
             raise ValueError('A course cannot also be a daily or plan task')
         if self.course_items is not None and not any(not item.name.endswith('/') for item in self.course_items):
             raise ValueError('A course needs at least one actual item')
+        stage_target = sum(max(0, value) for value in self.daily_plan) if self.daily_plan is not None else effective_target
+        if any(stage.value > stage_target for stage in self.stages):
+            raise ValueError('Stage values cannot exceed the total target')
         return self
 
 
 class TaskPatch(BaseModel):
+    stages: list[TaskStage] | None = Field(default=None, max_length=6)
+
+    @field_validator('stages')
+    @classmethod
+    def sort_stages(cls, value: list[TaskStage] | None) -> list[TaskStage] | None:
+        return ordered_stages(value)
+
     category_id: UUID | None = None
     deadline: date | None = None
     schedule: ScheduleConfig | None = None
@@ -295,6 +313,16 @@ class CategoryAssign(BaseModel):
 
 
 class TaskOut(BaseModel):
+    stages: list[TaskStage] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def stage_progress(self) -> StageProgress:
+        completed = sum(stage.value <= self.progress for stage in self.stages)
+        pending = next(((index, stage) for index, stage in enumerate(self.stages, 1) if stage.value > self.progress), None)
+        next_stage = NextStage(value=pending[1].value, name=pending[1].name or f"第 {pending[0]} 阶段", remaining=pending[1].value - self.progress) if pending else None
+        return StageProgress(completed=completed, total=len(self.stages), next_stage=next_stage)
+
     model_config = ConfigDict(from_attributes=True)
     id: UUID
     name: str

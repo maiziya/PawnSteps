@@ -5,6 +5,7 @@ import { CompletionMark } from "@/components/completion-mark";
 import { progressChange, type ProgressFeedback } from "@/lib/progress-feedback";
 import { toast } from "sonner";
 import { api, ApiError, ownerIdentity } from "@/lib/api";
+import { crossedStages, type StageFeedback } from "@/lib/stages";
 import { playSound } from "@/lib/audio";
 import type { MutationResponse, TaskCategory, Reward, Stats, Task, TodayPlan, User } from "@/lib/types";
 
@@ -46,6 +47,7 @@ interface AppState {
   muted: boolean; dark: boolean;
   quickFeedback: Record<string, QuickFeedback>;
   progressFeedback: Record<string, ProgressFeedback>;
+  stageFeedback: Record<string, StageFeedback>;
   completionUndo: CompletionUndo | null;
   initialize: () => Promise<void>; refresh: () => Promise<void>;
   mutate: (path: string, body?: unknown, method?: string, options?: MutationOptions) => Promise<MutationResponse>;
@@ -93,9 +95,23 @@ export const useAppStore = create<AppState>((set, get) => {
         const task = activeTasks.get(id);
         return task && previousTasks.get(id)?.owner_id === task.owner_id;
       })) : {};
+    const stageFeedback: Record<string, StageFeedback> = before.today === data.today
+      ? Object.fromEntries(Object.entries(before.stageFeedback).filter(([id, event]) => {
+        const task = activeTasks.get(id);
+        return task && previousTasks.get(id)?.owner_id === task.owner_id && event.stages.every(stage => stage.value <= task.progress && task.stages?.some(current => current.value === stage.value && current.name === stage.name));
+      })) : {};
     if (feedback && progressMutation && before.today === data.today) {
       for (const task of data.tasks) {
         const previous = previousTasks.get(task.id);
+        const crossed = previous ? crossedStages(previous, task) : [];
+        if (crossed.length) {
+          const event = { id: `stage-${++progressSequence}`, stages: crossed };
+          stageFeedback[task.id] = event;
+          setTimeout(() => {
+            if (get().stageFeedback[task.id]?.id !== event.id) return;
+            set(state => { const next = { ...state.stageFeedback }; delete next[task.id]; return { stageFeedback: next }; });
+          }, 2400);
+        }
         const change = previous && progressChange(previous, task);
         if (!change) continue;
         const effect = { ...change, id: `progress-${++progressSequence}` };
@@ -109,7 +125,7 @@ export const useAppStore = create<AppState>((set, get) => {
         }, 2000);
       }
     }
-    set({ categories: data.categories || [], selectedCategory: (data.user && before.user?.id !== data.user.id) || (before.selectedCategory !== "all" && before.selectedCategory !== "uncategorized" && !(data.categories || []).some(category => category.id === before.selectedCategory)) ? "all" : before.selectedCategory, progressFeedback, tasks: data.tasks, archivedTasks: data.archived_tasks || [], rewards: data.rewards, stats: data.stats, error: null,
+    set({ categories: data.categories || [], selectedCategory: (data.user && before.user?.id !== data.user.id) || (before.selectedCategory !== "all" && before.selectedCategory !== "uncategorized" && !(data.categories || []).some(category => category.id === before.selectedCategory)) ? "all" : before.selectedCategory, progressFeedback, stageFeedback, tasks: data.tasks, archivedTasks: data.archived_tasks || [], rewards: data.rewards, stats: data.stats, error: null,
       today: data.today, timezone: data.timezone, todayPlan: data.today_plan || { date: data.today, task_ids: [] },
       completionUndo: receiptInvalid ? null : receipt, unlocked: unlocked || pendingUnlock,
       ...(data.user ? { user: data.user } : {}) });
@@ -128,7 +144,7 @@ export const useAppStore = create<AppState>((set, get) => {
   }
   return {
     categories: [], selectedCategory: "all", selectCategory: id => set({ selectedCategory: id }),
-    tasks: [], archivedTasks: [], rewards: [], stats: emptyStats, user: null, today: "", timezone: "Asia/Shanghai", todayPlan: { date: "", task_ids: [] }, loading: true, busy: false, error: null, unlocked: null, muted: false, dark: false, quickFeedback: {}, progressFeedback: {}, completionUndo: null,
+    tasks: [], archivedTasks: [], rewards: [], stats: emptyStats, user: null, today: "", timezone: "Asia/Shanghai", todayPlan: { date: "", task_ids: [] }, loading: true, busy: false, error: null, unlocked: null, muted: false, dark: false, quickFeedback: {}, progressFeedback: {}, stageFeedback: {}, completionUndo: null,
     initialize: async () => {
       const dark = localStorage.getItem("pawnsteps-theme") === "dark" || (!localStorage.getItem("pawnsteps-theme") && matchMedia("(prefers-color-scheme: dark)").matches);
       document.documentElement.classList.toggle("dark", dark);
@@ -258,7 +274,7 @@ export const useAppStore = create<AppState>((set, get) => {
       if (receipt) toast.dismiss(completionToastId(receipt.recordId));
       localStorage.removeItem("pawnsteps-token");
       localStorage.removeItem("pawnsteps-guest-id");
-      set({ categories: [], selectedCategory: "all", user: null, tasks: [], archivedTasks: [], rewards: [], stats: emptyStats, todayPlan: { date: "", task_ids: [] }, unlocked: null, loading: true, quickFeedback: {}, progressFeedback: {}, completionUndo: null });
+      set({ categories: [], selectedCategory: "all", user: null, tasks: [], archivedTasks: [], rewards: [], stats: emptyStats, todayPlan: { date: "", task_ids: [] }, unlocked: null, loading: true, quickFeedback: {}, progressFeedback: {}, stageFeedback: {}, completionUndo: null });
       try { apply(await api<MutationResponse>("/state")); } catch (error) { set({ error: String(error) }); }
       finally { set({ loading: false }); }
     }),

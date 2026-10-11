@@ -11,8 +11,9 @@ import { Input } from '@/components/ui/input';
 import { parseCourseDirectory, parseCourseText } from '@/lib/course';
 import { useAppStore } from '@/lib/store';
 import { everydaySchedule, ScheduleOptions, ScheduleSelect } from '@/components/schedule-fields';
-import type { CourseItem, Task, TaskSchedule } from '@/lib/types';
+import type { CourseItem, Task, TaskSchedule, TaskStage } from '@/lib/types';
 import { CategoryManager } from './task-categories';
+import { TaskStageEditor } from './task-stages';
 import './task-form.css';
 
 const formSchema = z.object({
@@ -69,6 +70,8 @@ function defaultValues(task?: Task | null, kind: TaskKind = 'normal'): FormValue
 }
 
 export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: { open: boolean; onOpenChange: (open: boolean) => void; task?: Task | null; initialKind?: TaskKind }) {
+  const [stageEditorOpen, setStageEditorOpen] = useState(false);
+  const [stages, setStages] = useState<TaskStage[]>([]);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [kind, setKind] = useState<TaskKind>('normal');
   const [courseDaily, setCourseDaily] = useState(true);
@@ -88,6 +91,9 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   const selectedUnit = watch('unit');
   const minimum = watch('dailyQuota');
   const deadline = watch('deadline');
+  const totalTarget = watch('target');
+  const planValues = watch('plan');
+  const customUnit = watch('customUnit');
   useEffect(() => {
     if (!getFieldState('dailyGoal').isDirty && Number(minimum) > Number(getValues('dailyGoal'))) {
       setValue('dailyGoal', minimum);
@@ -99,6 +105,8 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
     const nextKind = task?.course_items ? 'course' : task?.daily_plan ? 'plan' : task && task.daily_quota > 0 ? 'daily' : task ? 'normal' : initialKind;
     reset(defaultValues(task, nextKind));
     setKind(nextKind);
+    setStages(task?.stages || []);
+    setStageEditorOpen(false);
     setCourseDaily(!task || task.daily_minimum > 0 || task.daily_goal !== null);
     setSchedule(task?.pending_schedule || task?.schedule || everydaySchedule());
     setCourseItems(task?.course_items || []);
@@ -154,6 +162,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
     if (appliedSchedule.mode === 'weekdays' && !appliedSchedule.weekdays.length) { setError('root.schedule', { message: '至少选择一天' }); return; }
     const payload: Record<string, unknown> = {
       schedule: appliedSchedule,
+      stages,
       name: values.name,
       description: values.description,
       deadline: values.deadline || null,
@@ -187,6 +196,8 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
       if (!courseItems.some(item => !item.name.endsWith('/'))) { setImportError('请先导入一份课程清单或文件夹'); return; }
       payload.course_items = courseItems;
     }
+    const stageMaximum = kind === 'course' ? courseCount : kind === 'plan' ? task?.target ?? (payload.daily_plan as number[]).reduce((sum, value) => sum + Math.max(0, value), 0) : Number(values.target);
+    if (stages.some(stage => stage.value > stageMaximum)) { setError('root.stages', { message: '阶段节点超过当前总目标，请重新配置阶段。' }); return; }
     try {
       await mutate(task ? `/tasks/${task.id}` : '/tasks', payload, task ? 'PATCH' : 'POST');
       onOpenChange(false);
@@ -194,6 +205,14 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   }
 
   const courseCount = courseItems.filter(item => !item.name.endsWith('/')).length;
+  let stageMaximum = kind === 'course' ? courseCount : Number(totalTarget);
+  if (kind === 'plan') {
+    try {
+      const values: unknown = task?.daily_plan || (planValues.trim().startsWith('[') ? JSON.parse(planValues) : planValues.split(/[,，\s]+/).filter(Boolean).map(Number));
+      stageMaximum = Array.isArray(values) && values.every(value => Number.isInteger(value) && value >= -1 && value <= 10000) ? values.reduce((sum: number, value: number) => sum + Math.max(0, value), 0) : 0;
+    } catch { stageMaximum = 0; }
+  }
+  const stageUnit = kind === 'course' ? '节' : kind === 'daily' ? '天' : selectedUnit === 'custom' ? customUnit || '单位' : selectedUnit;
   const pending = Boolean(busy) || isSubmitting || importing;
   const directoryAttributes = { webkitdirectory: '', directory: '' } as InputHTMLAttributes<HTMLInputElement>;
 
@@ -214,6 +233,8 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
     if (selectedCategoryId && !categories.some(category => category.id === selectedCategoryId)) setValue('categoryId', '');
   }, [selectedCategoryId, categories, setValue]);
   const additionalFields = <>
+          <div className="task-stage-configure"><span>阶段目标 <small>{stages.length ? `${stages.length} 个节点` : '可选'}</small></span><button type="button" disabled={pending || !Number.isInteger(stageMaximum) || stageMaximum < 1 || stageMaximum > 1000000} onClick={() => setStageEditorOpen(true)}>{stages.length ? '调整阶段' : '配置阶段'}</button></div>
+          {errors.root?.stages && <p role="alert" className="text-xs text-[var(--accent)]">{errors.root.stages.message}</p>}
           <div className="space-y-1.5"><div className="task-deadline-label"><label htmlFor="task-category">分类 <span className="muted">可选</span></label><button type="button" onClick={() => setCategoryManagerOpen(true)}>管理分类</button></div><select id="task-category" aria-label="分类" className="field" {...register('categoryId')}><option value="">未分类</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select></div>
           <div className="space-y-1.5"><div className="task-deadline-label"><label htmlFor="task-deadline" className="text-sm font-medium">截止日期 <span className="font-normal text-[var(--muted)]">可选</span></label>{deadline && <button type="button" onClick={() => {
             setValue('deadline', '', { shouldDirty: true, shouldValidate: true });
@@ -233,7 +254,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   </>;
 
   return (
-    <><CategoryManager open={categoryManagerOpen && open} onClose={() => setCategoryManagerOpen(false)} /><Dialog open={open} onOpenChange={next => { if (!pending) onOpenChange(next); }}>
+    <><TaskStageEditor open={stageEditorOpen && open} onClose={() => setStageEditorOpen(false)} value={stages} maximum={stageMaximum} unit={stageUnit} onSave={value => { setStages(value); clearErrors("root.stages"); }} /><CategoryManager open={categoryManagerOpen && open} onClose={() => setCategoryManagerOpen(false)} /><Dialog open={open} onOpenChange={next => { if (!pending) onOpenChange(next); }}>
       <DialogContent className="task-form-dialog">
         <DialogHeader>
           <DialogTitle>{task ? '调整你的目标' : '从一个小目标开始'}</DialogTitle>

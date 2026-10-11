@@ -426,6 +426,9 @@ async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body:
             raise HTTPException(422, 'Daily goal cannot be lower than the daily minimum')
         if not task.daily_quota and daily_goal > values.get('target', task.target):
             raise HTTPException(422, 'Daily goal cannot exceed the total target')
+    stage_values = values.get('stages', task.stages)
+    if any(stage['value'] > values.get('target', task.target) for stage in stage_values):
+        raise HTTPException(422, '阶段节点不能超过任务总目标，请先调整阶段')
     effective_on = today() + timedelta(days=1)
     config = ScheduleConfig.model_validate(requested_schedule) if requested_schedule is not None else schedules.configuration(task, effective_on)[0]
     enabled = bool(values.get('daily_quota', task.daily_quota) or values.get('daily_minimum', task.daily_minimum) or task.daily_plan is not None)

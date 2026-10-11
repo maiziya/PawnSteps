@@ -101,3 +101,14 @@ Streaks count actual achieved dates. Non-required weekdays and unfinished weekly
 
 
 Desktop notification functionality has been removed. Revision `e25c61498b3a` and the unused `reminder_deliveries` table remain for compatibility with installations that already applied the published migration. No reminder endpoints or browser notification triggers are active.
+
+
+## Task stages
+
+Task creation and editing accept optional `stages: [{value: integer, name?: string}]`. Up to six distinct positive nodes may be configured; the server sorts them ascending. Values cannot exceed the effective total target (ordinary quantities, daily achievement days, plan positive quota sum or real course item count). Names are trimmed and limited to 40 characters. Omitted creation stages default to `[]`; PATCH omission preserves configuration, `[]` clears it, and null is rejected. Reducing the target below an existing node requires adjusting the stage list in the same mutation.
+
+Task snapshots include the configuration and read-only `stage_progress: {completed, total, next_stage: {value, name, remaining} | null}`. Achievement is derived from cumulative `progress`, not `today_amount` or the uncapped `total_amount`. Nodes provide no additional XP or automatic reward unlocks. Editing, revoking, backfilling and restoring records update the derived state; plan expiry never fills unearned nodes. Account exports retain the configuration.
+
+Clients celebrate only confirmed forward crossings of existing nodes during progress mutations. A single increment crossing several nodes generates one stage receipt; loading, metadata edits and idempotent replays do not produce a celebration. Reductions immediately recalculate current achievement; reaching a node again after a correction is a new crossing. A daily task's daily meter does not display cumulative-day stage ticks.
+
+Alembic revision `f37a8461bc92` adds non-null JSON/JSONB `tasks.stages` with an empty-list default. Existing tasks and records retain their previous values and have stages disabled until configured.

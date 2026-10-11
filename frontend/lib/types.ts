@@ -1,8 +1,11 @@
+export interface TaskStage { value: number; name: string }
+export interface StageProgress { completed: number; total: number; next_stage: (TaskStage & { remaining: number }) | null }
 export interface CourseItem { name: string; done: boolean; done_date?: string | null; is_backfill?: boolean; recorded_at?: string | null }
 export interface TaskSchedule { mode: "daily" | "weekdays" | "weekly"; weekdays: number[]; weekly_target: number | null }
 export type CategoryColor = "clay" | "sage" | "ochre" | "slate" | "rose" | "lavender";
 export interface TaskCategory { id: string; name: string; color: CategoryColor; position: number }
 export interface Task {
+  stages?: TaskStage[]; stage_progress?: StageProgress;
   record_start_date?: string | null; record_end_date?: string | null;
   total_amount?: number | null;
   category_id?: string | null;

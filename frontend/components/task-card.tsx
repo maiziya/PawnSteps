@@ -5,11 +5,12 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Archive, ArrowRight, BookOpen, CalendarDays, FileText, Folder, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Timer, Trash2 } from 'lucide-react';
+import { Archive, ArrowRight, BookOpen, Check, CalendarDays, FileText, Folder, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Timer, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ownerIdentity } from '@/lib/api';
 import type { Task } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
+import { TaskStageSummary } from './task-stages';
 import { TaskProgress } from './task-progress';
 import { CompletionMark } from './completion-mark';
 import { scheduleLabel } from './schedule-fields';
@@ -33,6 +34,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
   const today = useAppStore(state => state.today);
   const quickRecord = useAppStore(state => state.quickRecord);
   const feedback = useAppStore(state => state.quickFeedback[task.id]);
+  const stageEffect = useAppStore(state => state.stageFeedback[task.id]);
   const progressEffect = useAppStore(state => state.progressFeedback[task.id]);
   const reward = useAppStore(state => state.rewards.find(reward => reward.id === task.reward_id));
   const reducedMotion = useReducedMotion();
@@ -136,13 +138,13 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
 
         {isCourse ? <div className="compact-course-progress">
           <div className="compact-course-meter">
-            <TaskProgress label="学习进度" ariaLabel={`${task.name}课程进度`} value={task.progress} maximum={task.target} unit="节" met={task.is_done} effect={progressEffect} texture="honeycomb" />
+            <TaskProgress label="学习进度" ariaLabel={`${task.name}课程进度`} value={task.progress} stages={task.stages} maximum={task.target} unit="节" met={task.is_done} effect={progressEffect} texture="honeycomb" />
           </div>
           {focusAction && !task.is_done && <button type="button" className="compact-history-button" disabled={busy} aria-label={`${task.name}开始专注`} title="开始专注" onClick={() => onStartFocus(task.id)}><Timer size={17} /></button>}
           <button type="button" className="compact-course-open" data-course-trigger={task.id} aria-label={`${task.name}${task.is_done ? '查看课程' : '继续学习'}`} onClick={() => onOpenCourse(task.id)}>{task.is_done ? '查看课程' : '继续学习'}<ArrowRight size={16} /></button>
         </div> : <div className={`compact-quick-progress ${task.is_done ? 'is-readonly' : ''}`}>
           <div className="compact-course-meter">
-            <TaskProgress label={meterCaption} ariaLabel={`${task.name}${useDailyMeter ? '今日' : '总'}进度`} value={meterCurrent} displayValue={useDailyMeter ? todayAmount : displayedTotal} maximum={meterMaximum} unit={isDaily && !isPlan && !useDailyMeter ? '天' : task.unit} minimum={useDailyMeter ? dailyMinimum : 0} met={!task.plan_expired && (useDailyMeter ? task.daily_done : task.is_done)} pending={saving} failed={feedback?.phase === 'failed'} effect={progressEffect} daily={useDailyMeter} texture={isDaily || isPlan ? 'leaf' : 'woven'} />
+            <TaskProgress label={meterCaption} ariaLabel={`${task.name}${useDailyMeter ? '今日' : '总'}进度`} value={meterCurrent} stages={useDailyMeter ? undefined : task.stages} displayValue={useDailyMeter ? todayAmount : displayedTotal} maximum={meterMaximum} unit={isDaily && !isPlan && !useDailyMeter ? '天' : task.unit} minimum={useDailyMeter ? dailyMinimum : 0} met={!task.plan_expired && (useDailyMeter ? task.daily_done : task.is_done)} pending={saving} failed={feedback?.phase === 'failed'} effect={progressEffect} daily={useDailyMeter} texture={isDaily || isPlan ? 'leaf' : 'woven'} />
           </div>
           <div className="compact-quick-actions">
             {!task.is_done && <div className="compact-stepper" role="group" aria-label={`${task.name}调整进度`}>
@@ -158,6 +160,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
           </div>
         </div>}
 
+        <TaskStageSummary task={task} feedback={stageEffect} />
         {descriptionOpen && <div id={descriptionId} className="compact-task-description">
           <dl className="compact-task-facts">
             <div><dt>任务总量</dt><dd>{task.target} {totalUnit}</dd></div>
@@ -168,6 +171,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
             {task.deadline && <div><dt>截止日期</dt><dd><time dateTime={task.deadline}>{task.deadline.replaceAll('-', '/')}</time></dd></div>}
             {task.pending_schedule && <div><dt>{task.pending_schedule_date} 起</dt><dd>{scheduleLabel(task.pending_schedule)}</dd></div>}
           </dl>
+          {Boolean(task.stages?.length) && <ul className="task-stage-facts" aria-label="全部阶段">{task.stages!.map((stage, index) => <li key={stage.value} className={task.progress >= stage.value ? 'is-reached' : undefined}>{task.progress >= stage.value ? <Check size={13} /> : <Flag size={13} />}<span title={stage.name}>{stage.name || `第 ${index + 1} 阶段`}</span><small>{stage.value} {totalUnit}</small></li>)}</ul>}
           {task.description && <p>{task.description}</p>}{reward && <p className="compact-task-reward-detail"><Gift size={15} aria-hidden="true" /><span>关联奖励：{reward.name}</span></p>}
           <button type="button" onClick={() => setDescriptionOpen(false)}>{`收起${detailsLabel}`}</button>
         </div>}

@@ -31,6 +31,7 @@ import { ReviewPanel } from "./review-panel";
 import { FocusPanel } from "./focus-panel";
 import { FocusProvider, FocusMini, FocusNavLabel } from "./focus-provider";
 import { useFocusStore } from "@/lib/focus-store";
+import { TaskStageSummary } from "./task-stages";
 import "./workspace.css";
 
 const navigation = [
@@ -45,7 +46,7 @@ type View = typeof navigation[number]["id"];
 const taskDragModifiers: Modifiers = [({ transform }) => ({ ...transform, x: 0 })];
 
 export function Dashboard() {
-  const { tasks, archivedTasks, selectedCategory, selectCategory, rewards, stats, user, timezone, today, todayPlan, loading, busy, error, dark, muted, unlocked, quickFeedback, progressFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
+  const { tasks, archivedTasks, selectedCategory, selectCategory, rewards, stats, user, timezone, today, todayPlan, loading, busy, error, dark, muted, unlocked, quickFeedback, progressFeedback, stageFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
   const [view, setView] = useState<View>("tasks");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -321,7 +322,7 @@ export function Dashboard() {
           ? { taskId: openedCourseId.current, owner: ownerIdentity(), date: todayPlan.date, anchor: target } : null;
       }}>
         {course && <>
-          <div className="course-drawer-header"><span className="course-drawer-eyebrow"><BookOpen size={16} />课程学习{course.archived_at ? <span className="course-daily-summary">已归档 · 只读</span> : (course.daily_goal || course.daily_minimum) > 0 && <span className={`course-daily-summary ${course.daily_done ? 'is-met' : ''}`} title={`每天最少 ${course.daily_minimum} 节，目标 ${course.daily_goal ?? course.daily_minimum} 节`}>今日 {course.today_amount} / {course.daily_goal ?? course.daily_minimum} 节{course.daily_done ? ' · 已达标' : ''}</span>}</span><DialogTitle>{course.name}</DialogTitle><DialogDescription className={course.description ? undefined : "sr-only"}>{course.description || "逐项勾选课程，记录学习进度。"}</DialogDescription>{!course.archived_at && <div className="course-record-date"><label htmlFor="course-record-date">完成日期</label><Input id="course-record-date" aria-label="课程完成日期" type="date" min={recordStart(course, timezone)} max={today} value={courseRecordDate || today} disabled={busy} onChange={event => setCourseRecordDate(event.target.value)} /><span>{courseRecordDate && courseRecordDate < today ? '补记' : ''}</span></div>}<TaskProgress course label={course.is_done ? "课程已完成" : "学习进度"} ariaLabel={`${course.name}课程进度`} value={course.progress} maximum={course.target} unit="节" met={course.is_done} effect={course.archived_at ? undefined : progressFeedback[course.id]} /></div>
+          <div className="course-drawer-header"><span className="course-drawer-eyebrow"><BookOpen size={16} />课程学习{course.archived_at ? <span className="course-daily-summary">已归档 · 只读</span> : (course.daily_goal || course.daily_minimum) > 0 && <span className={`course-daily-summary ${course.daily_done ? 'is-met' : ''}`} title={`每天最少 ${course.daily_minimum} 节，目标 ${course.daily_goal ?? course.daily_minimum} 节`}>今日 {course.today_amount} / {course.daily_goal ?? course.daily_minimum} 节{course.daily_done ? ' · 已达标' : ''}</span>}</span><DialogTitle>{course.name}</DialogTitle><DialogDescription className={course.description ? undefined : "sr-only"}>{course.description || "逐项勾选课程，记录学习进度。"}</DialogDescription>{!course.archived_at && <div className="course-record-date"><label htmlFor="course-record-date">完成日期</label><Input id="course-record-date" aria-label="课程完成日期" type="date" min={recordStart(course, timezone)} max={today} value={courseRecordDate || today} disabled={busy} onChange={event => setCourseRecordDate(event.target.value)} /><span>{courseRecordDate && courseRecordDate < today ? '补记' : ''}</span></div>}<TaskProgress course label={course.is_done ? "课程已完成" : "学习进度"} ariaLabel={`${course.name}课程进度`} stages={course.stages} value={course.progress} maximum={course.target} unit="节" met={course.is_done} effect={course.archived_at ? undefined : progressFeedback[course.id]} /><TaskStageSummary task={course} feedback={course.archived_at ? undefined : stageFeedback[course.id]} /></div>
           <div className="course-drawer-body"><CourseItems key={course.id} task={course} recordDate={courseRecordDate && courseRecordDate !== today ? courseRecordDate : undefined} readonlyIndices={course.archived_at ? course.course_items!.map((_, index) => index) : []} /></div>
           <div className="course-drawer-footer"><span>{course.archived_at ? "恢复任务后，可继续学习。" : course.is_done ? "这一程，已经走完。" : "每完成一节，都在向前。"}</span><Button variant="secondary" onClick={() => setCourseId(null)}>{view === "review" ? "返回每周回顾" : "返回任务列表"}</Button></div>
         </>}

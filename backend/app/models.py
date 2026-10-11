@@ -86,6 +86,7 @@ class Task(Base):
     daily_progress: Mapped[int] = mapped_column(Integer, default=0)
     daily_done: Mapped[bool] = mapped_column(Boolean, default=False)
     daily_date: Mapped[date | None] = mapped_column(Date)
+    stages: Mapped[list] = mapped_column(JSON().with_variant(JSONB, 'postgresql'), default=list, server_default='[]')
     daily_plan: Mapped[list[int] | None] = mapped_column(JSON().with_variant(JSONB, 'postgresql'))
     plan_start_date: Mapped[date | None] = mapped_column(Date)
     course_items: Mapped[list[dict] | None] = mapped_column(JSON().with_variant(JSONB, 'postgresql'))
