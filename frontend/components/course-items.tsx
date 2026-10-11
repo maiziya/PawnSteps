@@ -29,7 +29,9 @@ function projectItems(source: CourseItem[], updates: PendingUpdate[]): CourseIte
   return source.map((item, index) => changes.has(index) ? { ...item, done: changes.get(index)! } : item);
 }
 
-export function CourseItems({ task, onSelectionChange, readonlyIndices = [] }: { task: Task; onSelectionChange?: (indices: number[], done: boolean) => void; readonlyIndices?: number[] }) {
+export function CourseItems({ task, onSelectionChange, readonlyIndices = [], recordDate }: { task: Task; onSelectionChange?: (indices: number[], done: boolean) => void; readonlyIndices?: number[]; recordDate?: string }) {
+  const recordDateRef = useRef(recordDate);
+  recordDateRef.current = recordDate;
   const selectionCallback = useRef(onSelectionChange);
   selectionCallback.current = onSelectionChange;
   const archivedRef = useRef(Boolean(task.archived_at));
@@ -91,12 +93,13 @@ export function CourseItems({ task, onSelectionChange, readonlyIndices = [] }: {
       itemsRef.current = projectItems(itemsRef.current, [{ id: 0, indices: eligible, done }]);
       selectionCallback.current(eligible, done); return;
     }
+    const date = recordDateRef.current;
     const update: PendingUpdate = { id: ++updateId.current, indices: eligible, done };
     pendingRef.current = [...pendingRef.current, update];
     // Publish intent before rendering or awaiting the network so the next gesture sees it.
     itemsRef.current = projectItems(itemsRef.current, [update]);
     setPendingUpdates(pendingRef.current);
-    try { await mutate(`/tasks/${task.id}/course`, { indices: eligible, done }); }
+    try { await mutate(`/tasks/${task.id}/course`, { indices: eligible, done, ...(done && date ? { date } : {}) }); }
     catch { /* The store reports failures; remove only this failed optimistic update. */ }
     finally {
       pendingRef.current = pendingRef.current.filter(item => item.id !== update.id);
@@ -302,7 +305,7 @@ export function CourseItems({ task, onSelectionChange, readonlyIndices = [] }: {
                     <span className={`flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--primary)] peer-focus-visible:ring-offset-2 ${items[index].done ? 'border-[var(--success)] bg-[var(--success)] text-[var(--surface)]' : 'border-[var(--border)]'}`} aria-hidden="true">
                       {items[index].done && <Check size={12} strokeWidth={3} />}
                     </span>
-                    <span className="min-w-0 break-words">{displayCourseItemName(items[index].name)}</span>
+                    <span className="min-w-0 break-words">{displayCourseItemName(items[index].name)}{items[index].done && items[index].is_backfill && <small className="record-backfill-label" title={`完成日期：${items[index].done_date}，录入时间：${items[index].recorded_at || "未知"}`}> · 补记</small>}</span>
                   </label>
                 ))}
               </div>}

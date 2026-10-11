@@ -12,7 +12,7 @@ async def test_repeated_steps_are_one_day_and_retry_does_not_duplicate_amount(cl
     await add_record(client, guest_headers, task['id'], 1, request_id=request_id)
     await add_record(client, guest_headers, task['id'], 5)
     retry = await add_record(client, guest_headers, task['id'], 1, request_id=request_id)
-    day = {'date': frozen_day['date'].isoformat(), 'amount': 6, 'record_count': 2}
+    day = {'date': frozen_day['date'].isoformat(), 'amount': 6, 'record_count': 2, 'backfill_count': 0}
     assert retry['record_day'] == day
     assert retry['record_day_count'] == 1
     response = await client.get(f"/api/tasks/{task['id']}/record-days", headers=guest_headers)
@@ -89,7 +89,7 @@ async def test_undated_legacy_is_separate_and_other_owners_cannot_read(client, g
     path = f"/api/tasks/{task['id']}"
     response = (await client.get(f'{path}/record-days', headers=guest_headers)).json()
     assert response['total'] == 2
-    assert response['days'][-1] == {'date': None, 'amount': 5, 'record_count': 2}
+    assert response['days'][-1] == {'date': None, 'amount': 5, 'record_count': 2, 'backfill_count': 0}
     details = (await client.get(f'{path}/records', headers=guest_headers, params={'undated': 'true'})).json()
     assert details['total'] == 2
     assert all(record['date'] is None for record in details['records'])

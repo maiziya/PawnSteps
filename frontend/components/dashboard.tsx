@@ -21,6 +21,8 @@ import { TaskCard } from "@/components/task-card";
 import { TaskForm, type TaskKind } from "@/components/task-form";
 import { TaskProgress } from "@/components/task-progress";
 import { CourseItems } from "@/components/course-items";
+import { BackfillPicker } from "@/components/backfill-picker";
+import { recordStart } from "@/lib/record-dates";
 import { ProgressRecords } from "@/components/progress-records";
 import { AccountPanel } from "@/components/account-panel";
 import { RewardsPanel } from "@/components/rewards-panel";
@@ -43,7 +45,7 @@ type View = typeof navigation[number]["id"];
 const taskDragModifiers: Modifiers = [({ transform }) => ({ ...transform, x: 0 })];
 
 export function Dashboard() {
-  const { tasks, archivedTasks, selectedCategory, selectCategory, rewards, stats, user, timezone, todayPlan, loading, busy, error, dark, muted, unlocked, quickFeedback, progressFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
+  const { tasks, archivedTasks, selectedCategory, selectCategory, rewards, stats, user, timezone, today, todayPlan, loading, busy, error, dark, muted, unlocked, quickFeedback, progressFeedback, completionUndo, initialize, refresh, mutate, undoCompletion, toggleTheme, toggleMuted, dismissUnlock } = useAppStore();
   const [view, setView] = useState<View>("tasks");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -60,6 +62,9 @@ export function Dashboard() {
   const [showRest, setShowRest] = useState(false);
   const [dateLabel, setDateLabel] = useState("");
   const [courseId, setCourseId] = useState<string | null>(null);
+  const [backfillDate, setBackfillDate] = useState<string | null>(null);
+  const [recordInitialDate, setRecordInitialDate] = useState<string | undefined>();
+  const [courseRecordDate, setCourseRecordDate] = useState("");
   const [recordTaskId, setRecordTaskId] = useState<string | null>(null);
   const courseOpener = useRef<HTMLElement | null>(null);
   const openedCourseId = useRef<string | null>(null);
@@ -120,7 +125,8 @@ export function Dashboard() {
   const course = [...tasks, ...archivedTasks].find(task => task.id === courseId && task.course_items !== null);
   const newTask = (kind: TaskKind = "normal") => { setEditing(null); setInitialKind(kind); setFilter("all"); history.replaceState(null, "", "#tasks"); setQuery(""); setFormOpen(true); };
   const editTask = (task: Task) => { setEditing(task); setFormOpen(true); };
-  const openCourse = (id: string) => {
+  const openCourse = (id: string, date?: string) => {
+    setCourseRecordDate(date || useAppStore.getState().today);
     courseOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     openedCourseId.current = id;
     setCourseId(id);
@@ -285,7 +291,7 @@ export function Dashboard() {
             </section>
           </div>}
           {view === "focus" && <FocusPanel />}
-          {view === "calendar" && <CalendarPanel onReview={() => changeView("review")} />}
+          {view === "calendar" && <CalendarPanel onReview={() => changeView("review")} onBackfill={setBackfillDate} />}
           {view === "review" && <ReviewPanel onCalendar={() => changeView("calendar")} onTask={id => { const task = [...tasks, ...archivedTasks].find(item => item.id === id); if (task?.course_items) openCourse(id); else setRecordTaskId(id); }} />}
           {view === "rewards" && <RewardsPanel />}
           {view === "account" && <AccountPanel />}
@@ -297,7 +303,13 @@ export function Dashboard() {
     <nav className="mobile-nav" aria-label="移动导航">{navigation.filter(item => item.id !== "review").map(item => <button key={item.id} aria-label={item.label} className={view === item.id || view === "review" && item.id === "calendar" ? "active" : ""} onClick={() => changeView(item.id)} aria-current={view === item.id || view === "review" && item.id === "calendar" ? "page" : undefined}><item.icon size={21} />{item.id === "focus" ? <FocusNavLabel /> : <span>{item.label}</span>}</button>)}</nav>
     <DayPlanPicker open={planPickerOpen} onClose={() => setPlanPickerOpen(false)} onSaved={() => { setPlanPickerOpen(false); setView("tasks"); chooseFilter("today"); }} />
     <TaskForm open={formOpen} onOpenChange={setFormOpen} task={editing} initialKind={initialKind} />
-    <ProgressRecords taskId={recordTaskId} onClose={() => setRecordTaskId(null)} returnFocus={view === "review" || view === "tasks" && (filter === "today" || filter === "archive") ? () => document.getElementById("main-content") : undefined} />
+    <BackfillPicker date={backfillDate} onClose={() => setBackfillDate(null)} onSelect={(id, date) => {
+      setBackfillDate(null);
+      const task = useAppStore.getState().tasks.find(task => task.id === id);
+      if (task?.course_items) openCourse(id, date);
+      else { setRecordInitialDate(date); setRecordTaskId(id); }
+    }} />
+    <ProgressRecords taskId={recordTaskId} initialDate={recordInitialDate} onClose={() => { setRecordTaskId(null); setRecordInitialDate(undefined); }} returnFocus={view === "calendar" || view === "review" || view === "tasks" && (filter === "today" || filter === "archive") ? () => document.getElementById("main-content") : undefined} />
     <Dialog open={Boolean(course)} onOpenChange={open => { if (!open) setCourseId(null); }}>
       <DialogContent className="course-drawer" onCloseAutoFocus={event => {
         event.preventDefault();
@@ -309,8 +321,8 @@ export function Dashboard() {
           ? { taskId: openedCourseId.current, owner: ownerIdentity(), date: todayPlan.date, anchor: target } : null;
       }}>
         {course && <>
-          <div className="course-drawer-header"><span className="course-drawer-eyebrow"><BookOpen size={16} />课程学习{course.archived_at ? <span className="course-daily-summary">已归档 · 只读</span> : (course.daily_goal || course.daily_minimum) > 0 && <span className={`course-daily-summary ${course.daily_done ? 'is-met' : ''}`} title={`每天最少 ${course.daily_minimum} 节，目标 ${course.daily_goal ?? course.daily_minimum} 节`}>今日 {course.today_amount} / {course.daily_goal ?? course.daily_minimum} 节{course.daily_done ? ' · 已达标' : ''}</span>}</span><DialogTitle>{course.name}</DialogTitle><DialogDescription className={course.description ? undefined : "sr-only"}>{course.description || "逐项勾选课程，记录学习进度。"}</DialogDescription><TaskProgress course label={course.is_done ? "课程已完成" : "学习进度"} ariaLabel={`${course.name}课程进度`} value={course.progress} maximum={course.target} unit="节" met={course.is_done} effect={course.archived_at ? undefined : progressFeedback[course.id]} /></div>
-          <div className="course-drawer-body"><CourseItems key={course.id} task={course} readonlyIndices={course.archived_at ? course.course_items!.map((_, index) => index) : []} /></div>
+          <div className="course-drawer-header"><span className="course-drawer-eyebrow"><BookOpen size={16} />课程学习{course.archived_at ? <span className="course-daily-summary">已归档 · 只读</span> : (course.daily_goal || course.daily_minimum) > 0 && <span className={`course-daily-summary ${course.daily_done ? 'is-met' : ''}`} title={`每天最少 ${course.daily_minimum} 节，目标 ${course.daily_goal ?? course.daily_minimum} 节`}>今日 {course.today_amount} / {course.daily_goal ?? course.daily_minimum} 节{course.daily_done ? ' · 已达标' : ''}</span>}</span><DialogTitle>{course.name}</DialogTitle><DialogDescription className={course.description ? undefined : "sr-only"}>{course.description || "逐项勾选课程，记录学习进度。"}</DialogDescription>{!course.archived_at && <div className="course-record-date"><label htmlFor="course-record-date">完成日期</label><Input id="course-record-date" aria-label="课程完成日期" type="date" min={recordStart(course, timezone)} max={today} value={courseRecordDate || today} disabled={busy} onChange={event => setCourseRecordDate(event.target.value)} /><span>{courseRecordDate && courseRecordDate < today ? '补记' : ''}</span></div>}<TaskProgress course label={course.is_done ? "课程已完成" : "学习进度"} ariaLabel={`${course.name}课程进度`} value={course.progress} maximum={course.target} unit="节" met={course.is_done} effect={course.archived_at ? undefined : progressFeedback[course.id]} /></div>
+          <div className="course-drawer-body"><CourseItems key={course.id} task={course} recordDate={courseRecordDate && courseRecordDate !== today ? courseRecordDate : undefined} readonlyIndices={course.archived_at ? course.course_items!.map((_, index) => index) : []} /></div>
           <div className="course-drawer-footer"><span>{course.archived_at ? "恢复任务后，可继续学习。" : course.is_done ? "这一程，已经走完。" : "每完成一节，都在向前。"}</span><Button variant="secondary" onClick={() => setCourseId(null)}>{view === "review" ? "返回每周回顾" : "返回任务列表"}</Button></div>
         </>}
       </DialogContent>

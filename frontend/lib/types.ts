@@ -1,8 +1,9 @@
-export interface CourseItem { name: string; done: boolean; done_date?: string | null }
+export interface CourseItem { name: string; done: boolean; done_date?: string | null; is_backfill?: boolean; recorded_at?: string | null }
 export interface TaskSchedule { mode: "daily" | "weekdays" | "weekly"; weekdays: number[]; weekly_target: number | null }
 export type CategoryColor = "clay" | "sage" | "ochre" | "slate" | "rose" | "lavender";
 export interface TaskCategory { id: string; name: string; color: CategoryColor; position: number }
 export interface Task {
+  record_start_date?: string | null; record_end_date?: string | null;
   category_id?: string | null;
   id: string; name: string; description: string; deadline?: string | null; target: number; progress: number;
   is_done: boolean; done_at: string | null; priority: "high" | "medium" | "low";
@@ -16,12 +17,13 @@ export interface Task {
 }
 export interface ProgressRecord {
   id: string; task_id: string; amount: number; note: string; date: string | null;
+  is_backfill?: boolean;
   source: "manual" | "legacy"; request_id: string | null;
   created_at: string; updated_at: string; deleted_at: string | null;
 }
 export interface ProgressRecordsResponse { records: ProgressRecord[]; total: number; offset: number; limit: number }
-export interface ProgressRecordDay { date: string | null; amount: number; record_count: number }
-export interface ProgressRecordDaysResponse { days: ProgressRecordDay[]; total: number; offset: number; limit: number }
+export interface ProgressRecordDay { date: string | null; amount: number; record_count: number; backfill_count?: number }
+export interface ProgressRecordDaysResponse { next_before?: string | null; has_more?: boolean; days: ProgressRecordDay[]; total: number; offset: number; limit: number }
 export interface Reward {
   id: string; name: string; image_url: string | null; is_unlocked: boolean;
   position: number; streak_target: number | null; owner_id: string;
@@ -48,5 +50,5 @@ export interface MutationResponse {
   today_plan: TodayPlan;
   focus?: import("./focus-types").FocusState | null;
 }
-export interface HistoryEntry { task_id: string; task_name: string; date: string; completed: boolean; amount: number; unit: string; task_kind: "normal" | "daily" | "plan" | "course"; quota: number | null }
+export interface HistoryEntry { task_id: string; task_name: string; date: string; completed: boolean; amount: number; unit: string; task_kind: "normal" | "daily" | "plan" | "course"; has_backfill?: boolean; quota: number | null }
 export interface HistoryResponse { history: HistoryEntry[]; streak: number; rest_dates: string[] }

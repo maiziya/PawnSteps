@@ -130,9 +130,10 @@ async def records(task_id: UUID, session: Session, owner_id: OwnerId,
 
 @router.get('/tasks/{task_id}/record-days', response_model=ProgressRecordDays)
 async def record_days(task_id: UUID, session: Session, owner_id: OwnerId,
-                      offset: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=100)):
+                      offset: int = Query(default=0, ge=0), limit: int = Query(default=50, ge=1, le=100),
+                      before: date | None = Query(default=None), day: date | None = Query(default=None)):
     async with tracker.owner_transaction(session, owner_id):
-        return await tracker.list_record_days(session, owner_id, task_id, offset, limit)
+        return await tracker.list_record_days(session, owner_id, task_id, offset, limit, before, day)
 
 
 @router.post('/tasks/{task_id}/records', response_model=MutationResponse, status_code=201)

@@ -10,12 +10,12 @@ from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import DailyHistory, FocusSession, Owner, ProgressAdjustment, ProgressRecord, Reward, Task, TaskCategory, TaskArchivePeriod, TaskSchedule
+from app.models import DailyHistory, FocusSession, Owner, ProgressAdjustment, ProgressRecord, Reward, Task, TaskCategory, TaskArchivePeriod, TaskSchedule, TaskThreshold
 from app.schemas import CategoryOut, CourseUpdate, DayPlanUpdate, ProgressRecordCreate, ProgressRecordOut, ProgressRecordPatch, RewardCreate, RewardOut, RewardPatch, ScheduleConfig, TaskCreate, TaskOut, TaskPatch
 
 
@@ -124,13 +124,64 @@ def _course_day_amounts(task: Task) -> dict[date, int]:
     return amounts
 
 
+def record_start(task: Task) -> date:
+    if task.daily_plan is not None and task.plan_start_date:
+        return task.plan_start_date
+    return min([schedules._business_date(task.created_at), *[row.starts_on for row in task.schedules]])
+
+
+def record_end(task: Task) -> date:
+    end = today()
+    if task.daily_plan is not None and task.plan_start_date:
+        end = min(end, task.plan_start_date + timedelta(days=len(task.daily_plan) - 1))
+    elif task.is_done:
+        worked = [row.date for row in task.history if row.progress > 0]
+        last_work = max(_course_day_amounts(task), default=None) if task.course_items is not None else getattr(task, '_last_record_date', None)
+        end = min(end, last_work or (max(worked) if worked else schedules._business_date(task.done_at or task.updated_at)))
+    return end
+
+
+def validate_record_date(task: Task, day: date) -> None:
+    if day > today():
+        raise HTTPException(422, '不能记录未来的完成量')
+    if day < record_start(task):
+        raise HTTPException(422, '记录日期不能早于任务开始日期')
+    if schedules.paused_on(task, day):
+        raise HTTPException(409, '归档暂停期间不能补记')
+    if task.is_done and day < today() and day > record_end(task):
+        raise HTTPException(409, '该日期晚于任务完成日期')
+    if task.daily_plan is not None:
+        index = (day - task.plan_start_date).days
+        if not 0 <= index < len(task.daily_plan):
+            raise HTTPException(409, '记录日期不在计划范围内')
+        if task.daily_plan[index] <= 0:
+            raise HTTPException(409, '休息日自动完成，无需补记')
+
+
+def quota_on(task: Task, day: date) -> int:
+    versions = [row for row in task.thresholds if row.starts_on <= day]
+    return max(versions, key=lambda row: row.starts_on).quota if versions else task.daily_quota or task.daily_minimum
+
+
+def preserve_threshold(task: Task, quota: int) -> None:
+    previous = task.daily_quota or task.daily_minimum
+    if not task.thresholds:
+        task.thresholds.append(TaskThreshold(starts_on=record_start(task), quota=previous))
+    row = next((row for row in task.thresholds if row.starts_on == today()), None)
+    if row is None:
+        task.thresholds.append(TaskThreshold(starts_on=today(), quota=quota))
+    else:
+        row.quota = quota
+
+
 def _refresh_minimum(task: Task, day: date, amounts: dict[date | None, int]) -> None:
     """Track daily achievement separately from quantity or course completion."""
     task.today_amount = amounts.get(day, 0)
     task.daily_date = day
     task.daily_progress = min(task.today_amount, task.daily_minimum)
-    if task.daily_minimum > 0 and task.today_amount > 0:
-        _history_row(task, day, task.daily_minimum)
+    for record_day, amount in amounts.items():
+        if record_day is not None and record_day <= day and amount > 0 and quota_on(task, record_day) > 0:
+            _history_row(task, record_day, quota_on(task, record_day))
     for row in task.history:
         if row.date <= day:
             row.progress = amounts.get(row.date, 0)
@@ -189,11 +240,11 @@ def _refresh_task(task: Task, day: date, amounts: dict[date | None, int], record
 
     for record_day in amounts:
         if record_day is not None and record_day <= day:
-            _history_row(task, record_day, task.daily_quota)
+            _history_row(task, record_day, quota_on(task, record_day))
     for row in task.history:
         if row.date <= day:
             if row.quota <= 0:
-                row.quota = task.daily_quota
+                row.quota = quota_on(task, row.date)
             row.progress = amounts.get(row.date, 0)
             row.completed = row.progress >= row.quota
     current = next((row for row in task.history if row.date == day), None)
@@ -238,6 +289,8 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
     day = today()
     amounts, counts = await _record_totals(session, tasks)
     for task in tasks:
+        work = _course_day_amounts(task) if task.course_items is not None else amounts.get(task.id, {})
+        task._last_record_date = max((record_day for record_day, amount in work.items() if record_day is not None and record_day <= day and amount > 0), default=None)
         if task.archived_at is None:
             _refresh_task(task, day, amounts.get(task.id, {}), counts.get(task.id, 0))
         else:
@@ -246,6 +299,8 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
             task.plan_expired = bool(task.daily_plan is not None and task.plan_start_date is not None
                                      and day >= task.plan_start_date + timedelta(days=len(task.daily_plan)))
         schedules.project(task, day)
+        task.record_start_date = record_start(task)
+        task.record_end_date = record_end(task)
     rewards = list((await session.scalars(select(Reward).where(Reward.owner_id == owner_id).order_by(Reward.position, Reward.id))).all())
     existing = {reward.streak_target for reward in rewards if reward.streak_target}
     last_position = max((reward.position for reward in rewards), default=-1)
@@ -327,7 +382,7 @@ async def create_task(session: AsyncSession, owner_id: str, body: TaskCreate) ->
         values['course_items'] = [{'name': item.name, 'done': False} for item in body.course_items]
         values['target'] = sum(not item.name.endswith('/') for item in body.course_items)
         values['unit'] = '节'
-    task = Task(**values, owner_id=owner_id, position=max((item.position for item in tasks), default=-1) + 1, progress=0, daily_date=today(), history=[], schedules=[TaskSchedule(starts_on=today(), enabled=bool(body.daily_quota or body.daily_minimum or body.daily_plan is not None), **schedule)])
+    task = Task(**values, owner_id=owner_id, position=max((item.position for item in tasks), default=-1) + 1, progress=0, daily_date=today(), history=[], thresholds=[TaskThreshold(starts_on=today(), quota=body.daily_quota or body.daily_minimum)], schedules=[TaskSchedule(starts_on=today(), enabled=bool(body.daily_quota or body.daily_minimum or body.daily_plan is not None), **schedule)])
     session.add(task)
     await session.flush()
     return await snapshot(session, owner_id)
@@ -378,6 +433,8 @@ async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body:
         current = schedules.configuration(task, today())[0] if enabled else ScheduleConfig()
         schedules.set_schedule(task, today(), current, enabled)
     schedules.set_schedule(task, effective_on, config, enabled)
+    if task.daily_plan is None and any(key in values for key in ('daily_quota', 'daily_minimum')):
+        preserve_threshold(task, values.get('daily_quota', task.daily_quota) or values.get('daily_minimum', task.daily_minimum))
     for key, value in values.items():
         setattr(task, key, value)
     if 'daily_minimum' in values:
@@ -399,7 +456,10 @@ async def retired_progress_endpoint(session: AsyncSession, owner_id: str, task_i
 
 
 def _request_fingerprint(body: ProgressRecordCreate) -> str:
-    payload = json.dumps({'amount': body.amount, 'note': body.note}, sort_keys=True, ensure_ascii=False)
+    values = {'amount': body.amount, 'note': body.note}
+    if body.date is not None:
+        values['date'] = body.date.isoformat()
+    payload = json.dumps(values, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
 
@@ -412,18 +472,26 @@ async def _get_progress_record(session: AsyncSession, task_id: UUID, record_id: 
 
 def _record_days_query(task_id: UUID):
     return select(ProgressRecord.date, func.sum(ProgressRecord.amount).label('amount'),
-        func.count().label('record_count')).where(
+        func.count().label('record_count'), func.sum(case((ProgressRecord.is_backfill, 1), else_=0)).label('backfill_count')).where(
         ProgressRecord.task_id == task_id, ProgressRecord.deleted_at.is_(None)).group_by(ProgressRecord.date)
 
 
-async def list_record_days(session: AsyncSession, owner_id: str, task_id: UUID, offset: int, limit: int) -> dict:
+async def list_record_days(session: AsyncSession, owner_id: str, task_id: UUID, offset: int, limit: int,
+                           before: date | None = None, day: date | None = None) -> dict:
     await snapshot(session, owner_id)
     task = await get_task(session, owner_id, task_id)
     query = _record_days_query(task.id)
+    if day is not None:
+        query = query.where(ProgressRecord.date == day)
     total = await session.scalar(select(func.count()).select_from(query.subquery()))
+    if before is not None:
+        query = query.where(or_(ProgressRecord.date < before, ProgressRecord.date.is_(None)))
+    remaining = await session.scalar(select(func.count()).select_from(query.subquery()))
     rows = (await session.execute(query.order_by(ProgressRecord.date.desc().nullslast())
         .offset(offset).limit(limit))).mappings().all()
-    return {'days': [dict(row) for row in rows], 'total': total, 'offset': offset, 'limit': limit}
+    more = remaining > offset + len(rows)
+    return {'days': [dict(row) for row in rows], 'total': total, 'offset': offset, 'limit': limit,
+            'has_more': more, 'next_before': rows[-1]['date'] if more and rows else None}
 
 
 async def _record_result(session: AsyncSession, owner_id: str, record: ProgressRecord) -> dict:
@@ -455,8 +523,9 @@ async def list_records(session: AsyncSession, owner_id: str, task_id: UUID, offs
 
 
 async def create_record(session: AsyncSession, owner_id: str, task_id: UUID, body: ProgressRecordCreate) -> dict:
-    await snapshot(session, owner_id)
+    state = await snapshot(session, owner_id)
     task = await get_task(session, owner_id, task_id)
+    task._last_record_date = next((row.record_end_date for row in [*state['tasks'], *state['archived_tasks']] if row.id == task.id), None)
     fingerprint = _request_fingerprint(body)
     if body.request_id is not None:
         if await session.get(ProgressAdjustment, (task.id, body.request_id)) is not None:
@@ -470,16 +539,15 @@ async def create_record(session: AsyncSession, owner_id: str, task_id: UUID, bod
     require_active(task)
     if task.course_items is not None:
         raise HTTPException(422, 'Course progress is recorded through its checklist')
-    if task.daily_plan is not None:
-        index = (today() - task.plan_start_date).days
-        if index < 0 or index >= len(task.daily_plan):
-            raise HTTPException(409, 'The plan is not active today')
-        if task.daily_plan[index] <= 0:
-            raise HTTPException(409, 'Rest days are completed automatically')
-    elif task.is_done and not (task.daily_quota > 0 and task.daily_done):
+    day = body.date or today()
+    if body.date is not None:
+        validate_record_date(task, day)
+    elif task.daily_plan is not None:
+        validate_record_date(task, day)
+    if task.is_done and day == today() and task.daily_plan is None and not (task.daily_quota > 0 and task.daily_done):
         raise HTTPException(409, 'This task is already complete')
-    record = ProgressRecord(task_id=task.id, amount=body.amount, note=body.note, date=today(),
-        source='manual', request_id=body.request_id or uuid4(), request_fingerprint=fingerprint)
+    record = ProgressRecord(task_id=task.id, amount=body.amount, note=body.note, date=day,
+        source='manual', is_backfill=day < today(), request_id=body.request_id or uuid4(), request_fingerprint=fingerprint)
     session.add(record)
     task.updated_at = utcnow()
     await session.flush()
@@ -562,6 +630,9 @@ async def set_course(session: AsyncSession, owner_id: str, task_id: UUID, body: 
     require_active(task)
     if task.course_items is None:
         raise HTTPException(422, 'This task is not a course')
+    day = body.date or today()
+    if body.done and body.date is not None:
+        validate_record_date(task, day)
     if any(index < 0 or index >= len(task.course_items) for index in body.indices):
         raise HTTPException(422, 'Course item index is out of range')
     items = [dict(item) for item in task.course_items]
@@ -569,9 +640,13 @@ async def set_course(session: AsyncSession, owner_id: str, task_id: UUID, body: 
         if not items[index]['name'].endswith('/') and items[index]['done'] != body.done:
             items[index]['done'] = body.done
             if body.done:
-                items[index]['done_date'] = today().isoformat()
+                items[index]['done_date'] = day.isoformat()
+                items[index]['is_backfill'] = day < today()
+                items[index]['recorded_at'] = utcnow().isoformat()
             else:
                 items[index].pop('done_date', None)
+                items[index].pop('is_backfill', None)
+                items[index].pop('recorded_at', None)
     task.course_items = items
     task.progress = sum(bool(item['done']) for item in items if not item['name'].endswith('/'))
     _finish(task, task.progress >= task.target)
@@ -720,6 +795,7 @@ async def history(session: AsyncSession, owner_id: str, month: str | None = None
             raise HTTPException(422, 'Month must use YYYY-MM format') from None
     tasks = await _tasks(session, owner_id)
     amounts, _ = await _record_totals(session, tasks)
+    backfilled = set((await session.execute(select(ProgressRecord.task_id, ProgressRecord.date).join(Task).where(Task.owner_id == owner_id, ProgressRecord.deleted_at.is_(None), ProgressRecord.is_backfill.is_(True)))).all())
     entries = []
     for task in tasks:
         kind = 'course' if task.course_items is not None else 'plan' if task.daily_plan is not None else 'daily' if task.daily_quota else 'normal'
@@ -732,7 +808,8 @@ async def history(session: AsyncSession, owner_id: str, month: str | None = None
             entries.append({'task_id': task.id, 'task_name': task.name, 'date': day,
                 'completed': row.completed if row else task.is_done,
                 'amount': totals.get(day, 0), 'unit': '节' if kind == 'course' else task.unit,
-                'task_kind': kind, 'quota': row.quota if row else None})
+                'task_kind': kind, 'quota': row.quota if row else None,
+                'has_backfill': (task.id, day) in backfilled or any(item.get('done') and item.get('is_backfill') and item.get('done_date') == day.isoformat() for item in task.course_items or [])})
     entries.sort(key=lambda entry: (-entry['date'].toordinal(), entry['task_name']))
     rest_dates = []
     if end is not None:

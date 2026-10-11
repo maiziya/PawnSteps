@@ -97,6 +97,7 @@ class Task(Base):
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     undo_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     schedules: Mapped[list['TaskSchedule']] = relationship(back_populates='task', cascade='all, delete-orphan', lazy='selectin')
+    thresholds: Mapped[list['TaskThreshold']] = relationship(back_populates='task', cascade='all, delete-orphan', lazy='selectin')
     archive_periods: Mapped[list['TaskArchivePeriod']] = relationship(back_populates='task', cascade='all, delete-orphan', lazy='selectin')
     history: Mapped[list['DailyHistory']] = relationship(back_populates='task', cascade='all, delete-orphan', lazy='selectin')
     records: Mapped[list['ProgressRecord']] = relationship(back_populates='task', cascade='all, delete-orphan')
@@ -124,6 +125,15 @@ class TaskSchedule(Base):
     weekdays: Mapped[list[int]] = mapped_column(JSON().with_variant(JSONB, 'postgresql'), default=list)
     weekly_target: Mapped[int | None] = mapped_column(Integer, nullable=True)
     task: Mapped['Task'] = relationship(back_populates='schedules')
+
+
+class TaskThreshold(Base):
+    __tablename__ = 'task_thresholds'
+    __table_args__ = (CheckConstraint('quota >= 0', name='ck_threshold_quota'),)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey('tasks.id', ondelete='CASCADE'), primary_key=True)
+    starts_on: Mapped[DateValue] = mapped_column(Date, primary_key=True)
+    quota: Mapped[int] = mapped_column(Integer)
+    task: Mapped['Task'] = relationship(back_populates='thresholds')
 
 
 class DayPlanItem(Base):
@@ -162,6 +172,7 @@ class ProgressRecord(Base):
     note: Mapped[str] = mapped_column(String(200), default='')
     date: Mapped[DateValue | None] = mapped_column(Date, nullable=True)
     source: Mapped[str] = mapped_column(String(10), default='manual')
+    is_backfill: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0')
     request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     request_fingerprint: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

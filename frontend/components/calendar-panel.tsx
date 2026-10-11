@@ -54,7 +54,7 @@ function ActivityRow({ entry }: { entry: HistoryEntry }) {
     : status === 'exceeded' ? `+${entry.amount - entry.quota!} ${entry.unit}` : '';
   return <li>
     <span className={`calendar-complete-check activity-${status}`} aria-hidden="true">{status === 'met' || status === 'exceeded' ? <Check size={14} /> : <Circle size={7} fill="currentColor" />}</span>
-    <strong className="calendar-entry-name" title={entry.task_name}>{entry.task_name}</strong>
+    <strong className="calendar-entry-name" title={entry.task_name}>{entry.task_name}{entry.has_backfill && <span className="record-backfill-label">补记</span>}</strong>
     <div className="calendar-entry-progress" title={activityLabel(entry)}>
       <span className="sr-only">{activityLabel(entry)}</span>
       <div aria-hidden="true"><span className="calendar-entry-quantity">{quantity}</span><span className={`calendar-entry-status activity-${status}`}><span className="calendar-status-label">{label}</span><span className="calendar-status-difference">{difference}</span></span></div>
@@ -66,7 +66,7 @@ function ActivityLegend() {
   return <div className="calendar-legend"><span><i className="activity-partial" />有进度 / 未达标</span><span><i />已达标</span><span><i className="activity-exceeded" />超量完成</span><span>无圆点：未记录</span></div>;
 }
 
-export function CalendarPanel({ onReview }: { onReview: () => void }) {
+export function CalendarPanel({ onReview, onBackfill }: { onReview: () => void; onBackfill: (date: string) => void }) {
   const tasks = useAppStore(state => state.tasks);
   const streak = useAppStore(state => state.stats.streak);
   const serverToday = useAppStore(state => state.today);
@@ -197,6 +197,7 @@ export function CalendarPanel({ onReview }: { onReview: () => void }) {
       return { key: requestKey, days: days.includes(day) ? days.filter(value => value !== day) : [...days, day] };
     });
   }
+  const detailActions = <div className="calendar-detail-actions"><span>{selectedEntries.length ? `${selectedEntries.length} 项记录` : ''}</span>{selectedDay < currentDay && <Button size="sm" variant="ghost" aria-label="补记当天" onClick={() => onBackfill(selectedDay)}>补记</Button>}</div>;
   const detailBody = loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p>
     : error ? <p className="calendar-detail-empty muted">记录暂未加载，请重试</p>
     : selectedEntries.length ? <ul className="calendar-completed-list">{selectedEntries.map(entry => <ActivityRow key={entry.task_id} entry={entry} />)}</ul>
@@ -239,7 +240,7 @@ export function CalendarPanel({ onReview }: { onReview: () => void }) {
         })}
       </div>
       <ActivityLegend />
-      <aside className="calendar-week-detail calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3><span>{selectedEntries.length ? `${selectedEntries.length} 项记录` : ''}</span></div>{detailBody}</aside>
+      <aside className="calendar-week-detail calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3>{detailActions}</div>{detailBody}</aside>
     </div> : view === 'calendar' ? <div className="calendar-layout" data-weeks={days.length / 7} aria-busy={loading}>
       <div className={`calendar-sheet panel ${loading ? "calendar-loading" : ""}`}>
         <table className="calendar-table"><caption className="sr-only">{year} 年 {month} 月打卡记录</caption><thead><tr>{weekDays.map(day => <th scope="col" key={day}>周{day}</th>)}</tr></thead><tbody>
@@ -250,7 +251,7 @@ export function CalendarPanel({ onReview }: { onReview: () => void }) {
         </tbody></table>
         <ActivityLegend />
       </div>
-      <aside className="calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3></div>{detailBody}</aside>
+      <aside className="calendar-day-detail panel"><div className="calendar-detail-heading"><h3>{dateLabel(selectedDay)}</h3>{detailActions}</div>{detailBody}</aside>
     </div> : <div className="calendar-list-panel panel" aria-busy={loading}>{loading ? <p className="calendar-detail-empty muted" role="status">正在加载记录</p> : error ? <p className="calendar-detail-empty muted">记录暂未加载，请重试</p> : recordedDays.length ? recordedDays.map(day => <section className="calendar-list-day" key={day}><button type="button" className="calendar-list-date" onClick={() => { chooseDay(day); changeView('calendar'); }}><strong>{calendarDate(day).getUTCDate()}</strong><span>{calendarDate(day).toLocaleDateString("zh-CN", { timeZone: 'UTC', weekday: "long" })}</span><small>{byDay[day].length} 项任务</small></button><ul className="calendar-completed-list">{byDay[day].map(entry => <ActivityRow key={entry.task_id} entry={entry} />)}</ul></section>) : <div className="calendar-detail-empty"><CalendarDays size={38} strokeWidth={1.2} /><h3>这个月的故事，等你来写</h3><p className="muted">记录一次任务进度，就会出现在这里。</p></div>}</div>}
     </div>
   </section>;

@@ -63,3 +63,30 @@
   .record-entry-heading { flex-wrap: wrap; gap: 3px 10px; }
   .record-edit-form { grid-template-columns: 1fr; }
 }
+.record-date-picker { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.record-date-picker>label { font-size: 13px; font-weight: 500; }
+.record-date-picker .field { width: 160px; min-width: 0; padding: 8px 10px; }
+.record-date-picker>button { min-height: 44px; padding: 0 8px; border: 0; border-radius: 8px; background: var(--surface-soft); color: var(--muted); font-size: 12px; }
+.record-backfill-label { color: var(--accent); font-size: 11px; font-weight: 400; }
+.record-day-date>.record-backfill-label { margin-left: 7px; white-space: nowrap; }
+@media (max-width: 390px) { .record-date-picker { gap: 6px; }.record-date-picker .field { width: 140px; }.record-day-date>.record-backfill-label { display: block; margin-left: 0; } }
+.backfill-picker.dialog-content { display: flex; flex-direction: column; overflow: hidden; width: min(480px, calc(100vw - 32px)); }
+.backfill-picker .dialog-header { flex-shrink: 0; }
+.backfill-search { display: flex; align-items: center; gap: 8px; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; padding-left: 12px; margin-bottom: 14px; flex-shrink: 0; }
+.backfill-search .field { border: 0; min-width: 0; background: transparent; }
+.backfill-search:focus-within { border-color: var(--accent); }
+.backfill-search .field:focus { outline: none; }
+.backfill-task-options { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.backfill-task-options>button { display: flex; align-items: center; width: 100%; min-height: 66px; gap: 12px; padding: 12px 8px; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--text); text-align: left; }
+.backfill-task-options>button:hover { background: var(--surface-soft); }
+.backfill-task-options>button>span { flex: 1; min-width: 0; }
+.backfill-task-options strong { display: block; overflow-wrap: anywhere; font-size: 14px; font-weight: 500; }
+.backfill-task-options small,.backfill-empty { display: block; color: var(--muted); font-size: 12px; }
+.backfill-empty { padding: 20px 0; }
+.calendar-detail-actions { display: flex; align-items: center; gap: 8px; }
+.calendar-detail-actions .btn { min-height: 36px; padding: 6px 8px; font-size: 12px; }
+.calendar-entry-name .record-backfill-label { margin-left: 6px; }
+.course-record-date { display: flex; align-items: center; gap: 9px; margin: 12px 0; color: var(--muted); font-size: 12px; }
+.course-record-date .field { width: 160px; min-width: 0; min-height: 40px; padding: 7px 10px; }
+.course-record-date>span:last-child { color: var(--accent); }
+@media (max-width: 390px) { .calendar-detail-actions>span { display: none; }.course-record-date { gap: 6px; }.course-record-date .field { width: 140px; } }

@@ -1,4 +1,5 @@
 from datetime import date, datetime, timezone
+from datetime import date as DateValue
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -11,6 +12,8 @@ class CourseItem(BaseModel):
     name: str = Field(min_length=1, max_length=500)
     done: bool = False
     done_date: date | None = None
+    is_backfill: bool = False
+    recorded_at: datetime | None = None
 
     @field_validator('name')
     @classmethod
@@ -120,6 +123,7 @@ class ProgressRecordCreate(BaseModel):
     amount: int = Field(ge=1, le=1000000, strict=True)
     note: str = Field(default='', max_length=200)
     request_id: UUID | None = None
+    date: DateValue | None = None
 
 
 class ProgressDecrement(BaseModel):
@@ -149,6 +153,7 @@ class ProgressRecordOut(BaseModel):
     note: str
     date: date | None
     source: Literal['manual', 'legacy']
+    is_backfill: bool = False
     request_id: UUID | None
     created_at: datetime
     updated_at: datetime
@@ -174,9 +179,12 @@ class ProgressRecordDay(BaseModel):
     date: date | None
     amount: int
     record_count: int
+    backfill_count: int = 0
 
 
 class ProgressRecordDays(BaseModel):
+    next_before: DateValue | None = None
+    has_more: bool = False
     days: list[ProgressRecordDay]
     total: int
     offset: int
@@ -186,6 +194,7 @@ class ProgressRecordDays(BaseModel):
 class CourseUpdate(BaseModel):
     indices: list[int] = Field(min_length=1, max_length=10000)
     done: bool
+    date: DateValue | None = None
 
 
 class Reorder(BaseModel):
@@ -320,6 +329,8 @@ class TaskOut(BaseModel):
     course_items: list[CourseItem] | None
     owner_id: str
     created_at: datetime
+    record_start_date: date | None = None
+    record_end_date: date | None = None
     updated_at: datetime
     archived_at: datetime | None = None
 
@@ -400,6 +411,7 @@ class HistoryEntry(BaseModel):
     unit: str = "步"
     task_kind: Literal["normal", "daily", "plan", "course"] = "daily"
     quota: int | None = None
+    has_backfill: bool = False
 
 
 class HistoryResponse(BaseModel):
