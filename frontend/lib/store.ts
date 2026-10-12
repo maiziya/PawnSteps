@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { api, ApiError, ownerIdentity } from "@/lib/api";
 import { crossedStages, type StageFeedback } from "@/lib/stages";
 import { playSound } from "@/lib/audio";
-import type { MutationResponse, TaskCategory, Reward, Stats, Task, TodayPlan, User } from "@/lib/types";
+import type { MutationResponse, TaskCategory, Reward, Stats, Task, TaskTemplate, TodayPlan, User } from "@/lib/types";
 
 const emptyStats: Stats = { total: 0, completed: 0, in_progress: 0, xp: 0, streak: 0, today_completed: 0, today_total: 0 };
 export interface QuickFeedback {
@@ -40,6 +40,7 @@ function serial<T>(operation: () => Promise<T>): Promise<T> {
 }
 export interface MutationOptions { expectedOwner?: string; quiet?: boolean; feedback?: boolean; completionHint?: { taskId: string; wasDone: boolean } }
 interface AppState {
+  templates: TaskTemplate[];
   categories: TaskCategory[]; selectedCategory: string; selectCategory: (id: string) => void;
   tasks: Task[]; archivedTasks: Task[]; rewards: Reward[]; stats: Stats; user: User | null;
   today: string; timezone: string; todayPlan: TodayPlan;
@@ -125,7 +126,7 @@ export const useAppStore = create<AppState>((set, get) => {
         }, 2000);
       }
     }
-    set({ categories: data.categories || [], selectedCategory: (data.user && before.user?.id !== data.user.id) || (before.selectedCategory !== "all" && before.selectedCategory !== "uncategorized" && !(data.categories || []).some(category => category.id === before.selectedCategory)) ? "all" : before.selectedCategory, progressFeedback, stageFeedback, tasks: data.tasks, archivedTasks: data.archived_tasks || [], rewards: data.rewards, stats: data.stats, error: null,
+    set({ templates: data.templates || [], categories: data.categories || [], selectedCategory: (data.user && before.user?.id !== data.user.id) || (before.selectedCategory !== "all" && before.selectedCategory !== "uncategorized" && !(data.categories || []).some(category => category.id === before.selectedCategory)) ? "all" : before.selectedCategory, progressFeedback, stageFeedback, tasks: data.tasks, archivedTasks: data.archived_tasks || [], rewards: data.rewards, stats: data.stats, error: null,
       today: data.today, timezone: data.timezone, todayPlan: data.today_plan || { date: data.today, task_ids: [] },
       completionUndo: receiptInvalid ? null : receipt, unlocked: unlocked || pendingUnlock,
       ...(data.user ? { user: data.user } : {}) });
@@ -143,7 +144,7 @@ export const useAppStore = create<AppState>((set, get) => {
     else if (data.tasks.some(t => before.tasks.some(old => old.id === t.id && (t.progress > old.progress || t.daily_progress > old.daily_progress || t.today_amount > old.today_amount)))) playSound("step");
   }
   return {
-    categories: [], selectedCategory: "all", selectCategory: id => set({ selectedCategory: id }),
+    templates: [], categories: [], selectedCategory: "all", selectCategory: id => set({ selectedCategory: id }),
     tasks: [], archivedTasks: [], rewards: [], stats: emptyStats, user: null, today: "", timezone: "Asia/Shanghai", todayPlan: { date: "", task_ids: [] }, loading: true, busy: false, error: null, unlocked: null, muted: false, dark: false, quickFeedback: {}, progressFeedback: {}, stageFeedback: {}, completionUndo: null,
     initialize: async () => {
       const dark = localStorage.getItem("pawnsteps-theme") === "dark" || (!localStorage.getItem("pawnsteps-theme") && matchMedia("(prefers-color-scheme: dark)").matches);
@@ -274,7 +275,7 @@ export const useAppStore = create<AppState>((set, get) => {
       if (receipt) toast.dismiss(completionToastId(receipt.recordId));
       localStorage.removeItem("pawnsteps-token");
       localStorage.removeItem("pawnsteps-guest-id");
-      set({ categories: [], selectedCategory: "all", user: null, tasks: [], archivedTasks: [], rewards: [], stats: emptyStats, todayPlan: { date: "", task_ids: [] }, unlocked: null, loading: true, quickFeedback: {}, progressFeedback: {}, stageFeedback: {}, completionUndo: null });
+      set({ templates: [], categories: [], selectedCategory: "all", user: null, tasks: [], archivedTasks: [], rewards: [], stats: emptyStats, todayPlan: { date: "", task_ids: [] }, unlocked: null, loading: true, quickFeedback: {}, progressFeedback: {}, stageFeedback: {}, completionUndo: null });
       try { apply(await api<MutationResponse>("/state")); } catch (error) { set({ error: String(error) }); }
       finally { set({ loading: false }); }
     }),

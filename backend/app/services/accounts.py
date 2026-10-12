@@ -129,6 +129,8 @@ async def migrate_guest(session: AsyncSession, guest_owner: str | None, user: Us
         task.name = name
         task.owner_id = user_owner
         existing_names.add(name)
+    from app.services import templates
+    await templates.migrate_owner(session, guest_owner, user_owner)
     await day_plan.migrate_owner(session, guest_owner, user_owner)
     await focus.migrate_owner(session, guest_owner, user_owner)
     await session.flush()
@@ -385,6 +387,7 @@ async def update_avatar(session: AsyncSession, user_id: UUID, upload) -> dict:
 
 
 async def export_data(session: AsyncSession, user_id: UUID) -> dict:
+    from app.services import templates
     async with tracker.owner_transaction(session, f"user:{user_id}"):
         user = await _user(session, user_id)
         state = await tracker.snapshot(session, f"user:{user.id}")
@@ -404,6 +407,7 @@ async def export_data(session: AsyncSession, user_id: UUID) -> dict:
                   "schedule_history": [{"task_id": str(row.task_id), "starts_on": row.starts_on, "enabled": row.enabled,
                                         "mode": row.mode, "weekdays": row.weekdays, "weekly_target": row.weekly_target} for row in schedule_rows],
                   "records": [ProgressRecordOut.model_validate(record) for record in records],
+                  "saved_templates": await templates.export_owned(session, f"user:{user.id}"),
                   "focus_data": await focus.export_sessions(session, f"user:{user.id}"),
                   "day_plans": await day_plan.export_plans(session, f"user:{user.id}"),
                   "daily_history": [{"task_id": str(entry.task_id), "task_name": name,

@@ -4,15 +4,16 @@ import { useEffect, useRef, useState, type InputHTMLAttributes } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { BookOpen, CalendarDays, Check, ChevronDown, FileText, Flag, FolderOpen, LoaderCircle, Sun } from 'lucide-react';
+import { BookOpen, CalendarDays, Check, ChevronDown, FileText, Flag, FolderOpen, Layers, LoaderCircle, Sun } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { parseCourseDirectory, parseCourseText } from '@/lib/course';
 import { useAppStore } from '@/lib/store';
 import { everydaySchedule, ScheduleOptions, ScheduleSelect } from '@/components/schedule-fields';
-import type { CourseItem, Task, TaskSchedule, TaskStage } from '@/lib/types';
+import type { CourseItem, Task, TaskSchedule, TaskStage, TemplateDetails } from '@/lib/types';
 import { CategoryManager } from './task-categories';
+import { TemplatePicker } from './task-templates';
 import { TaskStageEditor } from './task-stages';
 import './task-form.css';
 
@@ -24,8 +25,8 @@ const formSchema = z.object({
   priority: z.enum(['high', 'medium', 'low']),
   rewardId: z.string(),
   categoryId: z.string(),
-  dailyGoal: z.string().refine(value => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 10000, '每日目标量为 1–10000 的整数'),
-  dailyQuota: z.string().refine(value => /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 10000, '最小完成量为 1–10000 的整数'),
+  dailyGoal: z.string().refine(value => !value || /^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 10000, '每日目标量为 1–10000 的整数'),
+  dailyQuota: z.string().refine(value => /^\d+$/.test(value) && Number(value) >= 0 && Number(value) <= 10000, '最小完成量为 0–10000 的整数'),
   plan: z.string(),
   planStartDate: z.string(),
   unit: z.string(),
@@ -60,7 +61,7 @@ function defaultValues(task?: Task | null, kind: TaskKind = 'normal'): FormValue
     priority: task?.priority || 'medium',
     rewardId: task?.reward_id || '',
     categoryId: task ? task.category_id || '' : useAppStore.getState().categories.find(category => category.id === useAppStore.getState().selectedCategory)?.id || '',
-    dailyGoal: String(task?.daily_goal ?? (task?.daily_quota || task?.daily_minimum || (kind === 'course' ? Math.min(3, task?.target || 3) : 1))),
+    dailyGoal: task && task.daily_goal === null ? '' : String(task?.daily_goal ?? (task?.daily_quota || task?.daily_minimum || (kind === 'course' ? Math.min(3, task?.target || 3) : 1))),
     dailyQuota: String(task?.daily_quota || task?.daily_minimum || 1),
     plan: task?.daily_plan?.join(', ') || '10, 10, 0, 10, -1, 10, 5',
     planStartDate: task?.plan_start_date || localDate(),
@@ -70,6 +71,8 @@ function defaultValues(task?: Task | null, kind: TaskKind = 'normal'): FormValue
 }
 
 export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: { open: boolean; onOpenChange: (open: boolean) => void; task?: Task | null; initialKind?: TaskKind }) {
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [appliedTemplateName, setAppliedTemplateName] = useState('');
   const [stageEditorOpen, setStageEditorOpen] = useState(false);
   const [stages, setStages] = useState<TaskStage[]>([]);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
@@ -95,7 +98,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   const planValues = watch('plan');
   const customUnit = watch('customUnit');
   useEffect(() => {
-    if (!getFieldState('dailyGoal').isDirty && Number(minimum) > Number(getValues('dailyGoal'))) {
+    if (getValues('dailyGoal') && !getFieldState('dailyGoal').isDirty && Number(minimum) > Number(getValues('dailyGoal'))) {
       setValue('dailyGoal', minimum);
     }
   }, [minimum, getValues, getFieldState, setValue]);
@@ -107,12 +110,29 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
     setKind(nextKind);
     setStages(task?.stages || []);
     setStageEditorOpen(false);
+    setTemplatePickerOpen(false);
+    setAppliedTemplateName('');
     setCourseDaily(!task || task.daily_minimum > 0 || task.daily_goal !== null);
     setSchedule(task?.pending_schedule || task?.schedule || everydaySchedule());
     setCourseItems(task?.course_items || []);
     setImportName('');
     setImportError('');
   }, [open, task, reset, initialKind]);
+
+  function applyTemplate(template: TemplateDetails) {
+    const config = template.configuration;
+    const nextKind = template.kind;
+    const quota = nextKind === 'normal' ? config.daily_minimum : config.daily_quota || config.daily_minimum || 1;
+    reset({ ...defaultValues(null, nextKind), name: config.name, description: config.description,
+      target: String(Math.min(100, template.target) || 10), priority: config.priority,
+      unit: unitOptions.includes(config.unit) ? config.unit : 'custom', customUnit: unitOptions.includes(config.unit) ? '' : config.unit,
+      dailyQuota: String(quota), dailyGoal: config.daily_goal === null ? '' : String(config.daily_goal),
+      plan: config.daily_plan?.join(', ') || defaultValues().plan, planStartDate: config.plan_start_date || localDate() });
+    setKind(nextKind); setSchedule(config.schedule); setStages(config.stages || []);
+    setCourseItems((config.course_items || []).map(item => ({ name: item.name, done: false })));
+    setCourseDaily(Boolean(config.daily_minimum || config.daily_goal));
+    setImportName(nextKind === 'course' ? template.name : ''); setImportError(''); setAppliedTemplateName(template.name);
+  }
 
   function updateCourseImport(items: CourseItem[], name: string) {
     setCourseItems(items);
@@ -150,7 +170,8 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   async function submit(values: FormValues) {
     const unit = kind === 'course' ? '节' : values.unit === 'custom' ? values.customUnit.trim() : values.unit;
     if (!unit) { setError('customUnit', { message: '请输入计量单位' }); return; }
-    if ((kind === 'normal' || kind === 'daily' || (kind === 'course' && courseDaily)) && Number(values.dailyGoal) < Number(values.dailyQuota)) { setError('dailyGoal', { message: '每日目标量不能小于最小完成量' }); return; }
+    if ((kind === 'daily' || (kind === 'course' && courseDaily)) && Number(values.dailyQuota) < 1) { setError('dailyQuota', { message: '最小完成量需要大于 0' }); return; }
+    if ((kind === 'normal' || kind === 'daily' || (kind === 'course' && courseDaily)) && values.dailyGoal && Number(values.dailyGoal) < Number(values.dailyQuota)) { setError('dailyGoal', { message: '每日目标量不能小于最小完成量' }); return; }
     if (kind === 'normal' && Number(values.dailyGoal) > Number(values.target)) { setError('dailyGoal', { message: '每日目标量不能超过任务总量' }); return; }
     if (kind === 'normal' && Number(values.dailyQuota) > Number(values.target)) { setError('dailyQuota', { message: '最小完成量不能超过目标任务总量' }); return; }
     if (kind === 'course') {
@@ -159,6 +180,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
       if (courseDaily && Number(values.dailyGoal) > courseCount) { setError('dailyGoal', { message: '每日目标量不能超过课程节数' }); return; }
     }
     const appliedSchedule = kind === 'plan' || (kind === 'course' && !courseDaily) ? everydaySchedule() : schedule;
+    if (kind === 'normal' && Number(values.dailyQuota) === 0 && appliedSchedule.mode !== 'daily') { setError('root.schedule', { message: '指定周期需要最小完成量大于 0' }); return; }
     if (appliedSchedule.mode === 'weekdays' && !appliedSchedule.weekdays.length) { setError('root.schedule', { message: '至少选择一天' }); return; }
     const payload: Record<string, unknown> = {
       schedule: appliedSchedule,
@@ -173,13 +195,13 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
     };
     if (kind === 'normal' || kind === 'daily') {
       payload.target = Number(values.target);
-      payload.daily_goal = Number(values.dailyGoal);
+      payload.daily_goal = values.dailyGoal ? Number(values.dailyGoal) : null;
     }
     if (kind === 'daily') payload.daily_quota = Number(values.dailyQuota);
     if (kind === 'normal') payload.daily_minimum = Number(values.dailyQuota);
     if (kind === 'course') {
       payload.daily_minimum = courseDaily ? Number(values.dailyQuota) : 0;
-      payload.daily_goal = courseDaily ? Number(values.dailyGoal) : null;
+      payload.daily_goal = courseDaily && values.dailyGoal ? Number(values.dailyGoal) : null;
     }
     if (!task && kind === 'plan') {
       let plan: unknown;
@@ -254,7 +276,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
   </>;
 
   return (
-    <><TaskStageEditor open={stageEditorOpen && open} onClose={() => setStageEditorOpen(false)} value={stages} maximum={stageMaximum} unit={stageUnit} onSave={value => { setStages(value); clearErrors("root.stages"); }} /><CategoryManager open={categoryManagerOpen && open} onClose={() => setCategoryManagerOpen(false)} /><Dialog open={open} onOpenChange={next => { if (!pending) onOpenChange(next); }}>
+    <><TemplatePicker open={templatePickerOpen && open && !task} onClose={() => setTemplatePickerOpen(false)} onSelect={applyTemplate} /><TaskStageEditor open={stageEditorOpen && open} onClose={() => setStageEditorOpen(false)} value={stages} maximum={stageMaximum} unit={stageUnit} onSave={value => { setStages(value); clearErrors("root.stages"); }} /><CategoryManager open={categoryManagerOpen && open} onClose={() => setCategoryManagerOpen(false)} /><Dialog open={open} onOpenChange={next => { if (!pending) onOpenChange(next); }}>
       <DialogContent className="task-form-dialog">
         <DialogHeader>
           <DialogTitle>{task ? '调整你的目标' : '从一个小目标开始'}</DialogTitle>
@@ -269,7 +291,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
           </div>}
 
           <div className="space-y-1.5">
-            <label htmlFor="task-name" className="text-sm font-medium">任务名称</label>
+            <div className="task-name-label"><label htmlFor="task-name" className="text-sm font-medium">任务名称</label>{!task && <button type="button" className="task-template-entry" onClick={() => setTemplatePickerOpen(true)} aria-label="使用模板" title={appliedTemplateName ? `当前模板：${appliedTemplateName}` : undefined}><Layers size={14} /><span>{appliedTemplateName || "使用模板"}</span></button>}</div>
             <Input id="task-name" autoFocus placeholder={kind === 'daily' ? '每天读几页书' : kind === 'course' ? '完成一门想学的课程' : '你想向什么目标迈进一步？'} maxLength={100} aria-invalid={Boolean(errors.name)} {...register('name')} />
             {errors.name && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.name.message}</p>}
           </div>
@@ -277,8 +299,8 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
           {kind !== 'course' && <div className="task-settings-grid">
             {(kind === 'normal' || kind === 'daily') && <div className="space-y-1.5"><label htmlFor="task-target" className="text-sm font-medium">{kind === 'daily' ? '坚持天数' : '目标任务总量'} <span className="font-normal text-[var(--muted)]">1–100</span></label><Input id="task-target" type="number" min={1} max={100} {...register('target')} />{errors.target && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.target.message}</p>}</div>}
             <div className="space-y-1.5"><label htmlFor="task-unit" className="text-sm font-medium">计量单位</label><div className={selectedUnit === 'custom' ? 'task-custom-unit-row' : undefined}><select id="task-unit" className="field w-full" {...register('unit')}>{unitOptions.map(unit => <option key={unit} value={unit}>{unit}</option>)}<option value="custom">自定义</option></select>{selectedUnit === 'custom' && <><label htmlFor="task-custom-unit" className="sr-only">自定义单位</label><Input id="task-custom-unit" maxLength={12} placeholder="单位" {...register('customUnit')} /></>}</div>{selectedUnit === 'custom' && errors.customUnit && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.customUnit.message}</p>}</div>
-            {(kind === 'daily' || kind === 'normal') && <div className="space-y-1.5"><label htmlFor="task-quota" className="text-sm font-medium">最小完成量</label><Input id="task-quota" type="number" min={1} max={10000} {...register('dailyQuota')} />{errors.dailyQuota && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyQuota.message}</p>}</div>}
-            {(kind === 'daily' || kind === 'normal') && <div className="space-y-1.5"><label htmlFor="task-daily-goal" className="text-sm font-medium">每日目标量</label><Input id="task-daily-goal" type="number" min={1} max={10000} {...register('dailyGoal')} />{errors.dailyGoal && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyGoal.message}</p>}</div>}
+            {(kind === 'daily' || kind === 'normal') && <div className="space-y-1.5"><label htmlFor="task-quota" className="text-sm font-medium">最小完成量</label><Input id="task-quota" type="number" min={kind === 'normal' ? 0 : 1} max={10000} {...register('dailyQuota')} />{errors.dailyQuota && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyQuota.message}</p>}</div>}
+            {(kind === 'daily' || kind === 'normal') && <div className="space-y-1.5"><label htmlFor="task-daily-goal" className="text-sm font-medium">每日目标量</label><Input id="task-daily-goal" placeholder="默认同最小完成量" type="number" min={1} max={10000} {...register('dailyGoal')} />{errors.dailyGoal && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyGoal.message}</p>}</div>}
             {kind === 'plan' && !task && <div className="space-y-1.5"><label htmlFor="task-plan-start" className="text-sm font-medium">开始日期</label><Input id="task-plan-start" type="date" {...register('planStartDate')} />{errors.planStartDate && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.planStartDate.message}</p>}</div>}
           </div>}
 
@@ -300,7 +322,7 @@ export function TaskForm({ open, onOpenChange, task, initialKind = 'normal' }: {
             <div className="task-course-plan-heading"><label className="task-course-daily-toggle"><input type="checkbox" checked={courseDaily} onChange={event => toggleCourseDaily(event.target.checked)} />每日学习计划</label>{courseDaily && <ScheduleSelect compact value={schedule} onChange={updateSchedule} />}</div>{courseDaily && <ScheduleOptions value={schedule} onChange={updateSchedule} />}{task && courseDaily && <p className="schedule-note">执行频率调整从明天生效，历史记录保留。</p>}{errors.root?.schedule && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.root.schedule.message}</p>}
             {courseDaily && <div className="task-settings-grid">
               <div className="space-y-1.5"><label htmlFor="course-minimum">最小完成量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-minimum" aria-label="最小完成量" type="number" min={1} max={courseCount || 10000} {...register('dailyQuota')} />{errors.dailyQuota && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyQuota.message}</p>}</div>
-              <div className="space-y-1.5"><label htmlFor="course-goal">每日目标量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-goal" aria-label="每日目标量" type="number" min={1} max={courseCount || 10000} {...register('dailyGoal')} />{errors.dailyGoal && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyGoal.message}</p>}</div>
+              <div className="space-y-1.5"><label htmlFor="course-goal">每日目标量<span className="muted" aria-hidden="true">（节）</span></label><Input id="course-goal" aria-label="每日目标量" placeholder="默认同最小完成量" type="number" min={1} max={courseCount || 10000} {...register('dailyGoal')} />{errors.dailyGoal && <p role="alert" className="text-xs text-red-600 dark:text-red-400">{errors.dailyGoal.message}</p>}</div>
             </div>}
           </div>}
           <details className="task-course-options"><summary>分类、截止日期与更多设置<ChevronDown size={16} /></summary><div className="task-form-fields">{additionalFields}</div></details>

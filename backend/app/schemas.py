@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from app.focus_schemas import FocusState
+from app.template_schemas import TemplateSummary
 from app.stage_schemas import TaskStage, NextStage, StageProgress, ordered_stages
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator, computed_field
@@ -105,6 +106,10 @@ class TaskCreate(BaseModel):
         if any(stage.value > stage_target for stage in self.stages):
             raise ValueError('Stage values cannot exceed the total target')
         return self
+
+
+class TemplateDetails(TemplateSummary):
+    configuration: TaskCreate
 
 
 class TaskPatch(BaseModel):
@@ -415,6 +420,7 @@ class DayPlanOut(BaseModel):
 
 
 class MutationResponse(BaseModel):
+    templates: list[TemplateSummary] = Field(default_factory=list)
     today: date
     timezone: str
     tasks: list[TaskOut]

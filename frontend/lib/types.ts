@@ -42,6 +42,7 @@ export interface User {
 }
 export interface TodayPlan { date: string; task_ids: string[] }
 export interface MutationResponse {
+  templates?: TaskTemplate[];
   categories?: TaskCategory[];
   tasks: Task[]; archived_tasks?: Task[]; rewards: Reward[]; stats: Stats; unlocked_reward: Reward | null;
   today: string; timezone: string;
@@ -56,3 +57,12 @@ export interface MutationResponse {
 }
 export interface HistoryEntry { task_id: string; task_name: string; date: string; completed: boolean; amount: number; unit: string; task_kind: "normal" | "daily" | "plan" | "course"; has_backfill?: boolean; quota: number | null }
 export interface HistoryResponse { history: HistoryEntry[]; streak: number; rest_dates: string[] }
+
+export interface TaskTemplate { id: string; name: string; kind: "normal" | "daily" | "plan" | "course"; target: number; unit: string; is_builtin: boolean; created_at?: string | null; updated_at?: string | null }
+export interface TemplateConfiguration {
+  name: string; description: string; unit: string; target: number; priority: Task["priority"];
+  daily_goal: number | null; daily_minimum: number; daily_quota: number;
+  daily_plan: number[] | null; plan_start_date: string | null; course_items: CourseItem[] | null;
+  stages: TaskStage[]; schedule: TaskSchedule;
+}
+export interface TemplateDetails extends TaskTemplate { configuration: TemplateConfiguration }

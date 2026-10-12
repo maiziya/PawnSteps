@@ -112,3 +112,20 @@ Task snapshots include the configuration and read-only `stage_progress: {complet
 Clients celebrate only confirmed forward crossings of existing nodes during progress mutations. A single increment crossing several nodes generates one stage receipt; loading, metadata edits and idempotent replays do not produce a celebration. Reductions immediately recalculate current achievement; reaching a node again after a correction is a new crossing. A daily task's daily meter does not display cumulative-day stage ticks.
 
 Alembic revision `f37a8461bc92` adds non-null JSON/JSONB `tasks.stages` with an empty-list default. Existing tasks and records retain their previous values and have stages disabled until configured.
+
+
+## Task templates
+
+Snapshots add lightweight `templates` summaries (`id`, `name`, `kind`, `target`, `unit`, `is_builtin`, timestamps). The three built-ins are read-only catalog entries: `builtin-reading`, `builtin-exercise`, `builtin-practice`. Custom summaries are owner-scoped and omit potentially large course configuration; details load only when selected.
+
+- `GET /templates` returns a full `MutationResponse` including the catalog and the owner's saved templates.
+- `GET /templates/{id}` returns a summary plus a validated `configuration` compatible with `POST /tasks`. It suggests a non-conflicting task name and refreshes a plan's start date to the application date. Applying a template fills a draft; it does not create a task.
+- `POST /templates` accepts `{name, source_task_id}` for an owned active or archived source task and returns the full mutation snapshot (201).
+- `PATCH /templates/{uuid}` accepts a new `name`, an owned `source_task_id` to replace configuration, or both. Null, empty and unknown fields are rejected. Replacement updates only the saved template.
+- `DELETE /templates/{uuid}` deletes the saved configuration and returns the full mutation snapshot; created tasks remain independent.
+
+Saved configuration retains task type, suggested name, description, unit, total target, priority, daily minimum/goal, schedule, stages, plan quotas and course item names. Course checks and their completion metadata are cleared. Progress, records, XP, archives, daily history, absolute deadlines and category/reward associations are not copied. A zero ordinary minimum and unset daily goal remain valid; the UI's empty goal displays the existing minimum-based fallback. Tasks created from templates still pass normal task validation and guest limits.
+
+Custom names are case-insensitively unique per owner and limited to 60 characters. Default creation limits are five guest templates and thirty user templates, configurable with `GUEST_TEMPLATE_LIMIT` and `USER_TEMPLATE_LIMIT`. Source deletion does not invalidate a saved configuration. Registration/login migration retains all saved templates, renaming collisions rather than overwriting data; migration may retain more than the creation limit. Account exports include full `saved_templates` configuration.
+
+Alembic revision `a48b7291dc63` adds only `task_templates` and its indexes/constraints. It does not rewrite existing tasks or progress data.

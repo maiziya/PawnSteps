@@ -289,3 +289,21 @@ class ReminderDelivery(Base):
     token: Mapped[uuid.UUID] = mapped_column(Uuid, default=uuid.uuid4)
     delivered: Mapped[bool] = mapped_column(Boolean, default=False)
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TaskTemplate(Base):
+    __tablename__ = 'task_templates'
+    __table_args__ = (
+        UniqueConstraint('owner_id', 'name', name='uq_template_owner_name'),
+        CheckConstraint("kind IN ('normal', 'daily', 'plan', 'course')", name='ck_template_kind'),
+        CheckConstraint('target >= 0', name='ck_template_target'),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[str] = mapped_column(ForeignKey('owners.id', ondelete='CASCADE'), index=True)
+    name: Mapped[str] = mapped_column(String(60))
+    kind: Mapped[str] = mapped_column(String(12))
+    target: Mapped[int] = mapped_column(Integer)
+    unit: Mapped[str] = mapped_column(String(12))
+    configuration: Mapped[dict] = mapped_column(JSON().with_variant(JSONB, 'postgresql'))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

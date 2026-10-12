@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     admin_username: str = 'admin'
     admin_password: str = ''
     admin_email: str = 'admin@pawnsteps.local'
+    guest_template_limit: int = 5
+    user_template_limit: int = 30
     guest_task_limit: int = 10
     guest_daily_limit: int = 3
 

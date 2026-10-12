@@ -283,6 +283,7 @@ async def _streak(session: AsyncSession, owner_id: str, tasks: list[Task] | None
 
 
 async def snapshot(session: AsyncSession, owner_id: str) -> dict:
+    from app.services.templates import summaries
     await ensure_owner(session, owner_id)
     await _cleanup(session, owner_id)
     tasks = await _tasks(session, owner_id)
@@ -335,6 +336,7 @@ async def snapshot(session: AsyncSession, owner_id: str) -> dict:
                    and (not task.is_done or task.daily_done)]
     return {
         'today': day,
+        'templates': await summaries(session, owner_id),
         'timezone': settings.timezone,
         'categories': [CategoryOut.model_validate(row) for row in (await session.scalars(select(TaskCategory).where(TaskCategory.owner_id == owner_id).order_by(TaskCategory.position, TaskCategory.id))).all()],
         'today_plan': await day_plan.projection(session, owner_id, day),
@@ -397,7 +399,7 @@ async def update_task(session: AsyncSession, owner_id: str, task_id: UUID, body:
     require_active(task)
     values = body.model_dump(exclude_unset=True)
     for key, value in values.items():
-        if value is None and key not in {'reward_id', 'deadline', 'category_id'} and not (key == 'daily_goal' and task.course_items is not None):
+        if value is None and key not in {'reward_id', 'deadline', 'category_id', 'daily_goal'}:
             raise HTTPException(422, f'{key} cannot be null')
     if values.get('category_id'):
         from app.services.categories import get_category

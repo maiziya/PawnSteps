@@ -5,11 +5,12 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, useReducedMotion } from 'framer-motion';
-import { Archive, ArrowRight, BookOpen, Check, CalendarDays, FileText, Folder, Flag, Gift, GripVertical, History, MoreHorizontal, Pencil, Sun, Timer, Trash2 } from 'lucide-react';
+import { Archive, ArrowRight, BookOpen, Check, CalendarDays, FileText, Folder, Flag, Gift, Layers, GripVertical, History, MoreHorizontal, Pencil, Sun, Timer, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ownerIdentity } from '@/lib/api';
 import type { Task } from '@/lib/types';
 import { useAppStore } from '@/lib/store';
+import { SaveTemplateDialog } from './task-templates';
 import { TaskStageSummary } from './task-stages';
 import { TaskProgress } from './task-progress';
 import { CompletionMark } from './completion-mark';
@@ -39,6 +40,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
   const reward = useAppStore(state => state.rewards.find(reward => reward.id === task.reward_id));
   const reducedMotion = useReducedMotion();
   const descriptionId = useId();
+  const [templateOpen, setTemplateOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [descriptionOpen, setDescriptionOpen] = useState(false);
   const isCourse = task.course_items !== null;
@@ -125,6 +127,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
                   {!task.is_done && <DropdownMenu.Item disabled={busy || saving} className="task-action-item" onSelect={() => onStartFocus(task.id)}><Timer size={16} />开始专注</DropdownMenu.Item>}
                   <DropdownMenu.Item disabled={busy || saving} className="task-action-item" aria-label={`设置${task.name}分类`} onSelect={() => setCategoryOpen(true)}><Folder size={16} />设置分类</DropdownMenu.Item>
                   <DropdownMenu.Item disabled={busy || saving} className="task-action-item" aria-label={`编辑${task.name}`} onSelect={() => onEdit(task)}><Pencil size={16} />编辑任务</DropdownMenu.Item>
+                  <DropdownMenu.Item disabled={busy || saving} className="task-action-item" onSelect={() => setTemplateOpen(true)}><Layers size={16} />保存为模板</DropdownMenu.Item>
                   {!isCourse && <DropdownMenu.Item disabled={busy || saving} className="task-action-item" aria-label={`${task.name}查看记录`} onSelect={() => onOpenRecords(task.id)}><History size={16} />查看记录</DropdownMenu.Item>}
                   <DropdownMenu.Item className="task-action-item" onSelect={() => setDescriptionOpen(open => !open)} aria-controls={descriptionId} aria-expanded={descriptionOpen}><FileText size={16} />{`${descriptionOpen ? '收起' : '查看'}${detailsLabel}`}</DropdownMenu.Item>
                   <DropdownMenu.Separator className="task-action-separator" />
@@ -175,6 +178,7 @@ export function TaskCard({ task, onEdit, onOpenCourse, onOpenRecords, onStartFoc
           {task.description && <p>{task.description}</p>}{reward && <p className="compact-task-reward-detail"><Gift size={15} aria-hidden="true" /><span>关联奖励：{reward.name}</span></p>}
           <button type="button" onClick={() => setDescriptionOpen(false)}>{`收起${detailsLabel}`}</button>
         </div>}
+        <SaveTemplateDialog task={task} open={templateOpen} onClose={() => setTemplateOpen(false)} />
         <CategoryAssignment task={task} open={categoryOpen} onClose={() => setCategoryOpen(false)} />
       </motion.article>
     </div>
